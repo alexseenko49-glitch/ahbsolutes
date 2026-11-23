@@ -43,13 +43,22 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
+      - name: Accept Android SDK licenses (SDK is preinstalled on the runner)
+        run: |
+          set +e
+          SDKM="${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager"
+          ls -la "$SDKM" || SDKM=$(command -v sdkmanager)
+          yes | "$SDKM" --licenses > /dev/null 2>&1
+          echo "licenses step done"
+          exit 0
 
       - name: Install the NDK version the project asks for
         run: |
           NDK=$(grep -rhoE 'ndkVersion[[:space:]]*=?[[:space:]]*"[0-9.]+"' upstream --include=build.gradle --include=build.gradle.kts | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
           echo "NDK: ${NDK:-<none declared>}"
-          if [ -n "$NDK" ]; then yes | sdkmanager "ndk;$NDK" || true; fi
+          SDKM="${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKM" ]  SDKM=$(command -v sdkmanager  true)
+          if [ -n "$NDK" ] && [ -n "$SDKM" ]; then yes | "$SDKM" "ndk;$NDK" || true; fi
 
       - name: Python deps
         run: pip install pillow
