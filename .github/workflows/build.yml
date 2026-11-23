@@ -1,0 +1,83 @@
+name: Build AHbsolute
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    env:
+      TG_API_ID: ${{ secrets.TG_API_ID }}
+      TG_API_HASH: ${{ secrets.TG_API_HASH }}
+      AH_PACKAGE: com.ahbsolute.app
+      UPSTREAM_REF: master
+    steps:
+      - name: Checkout AHbsolute patches
+        uses: actions/checkout@v4
+
+      - name: Require your own api_id (Telegram API Terms 2.1)
+        run: |
+          if [ -z "$TG_API_ID" ] || [ -z "$TG_API_HASH" ]; then
+            echo "::error::Add repository secrets TG_API_ID and TG_API_HASH (https://my.telegram.org -> API development tools)."
+            exit 1
+          fi
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
+      - name: Checkout Telegram-Android (upstream source)
+        uses: actions/checkout@v4
+        with:
+          repository: TelegramMessenger/Telegram-Android
+          ref: ${{ env.UPSTREAM_REF }}
+          path: upstream
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install the NDK version the project asks for
+        run: |
+          NDK=$(grep -rhoE 'ndkVersion[[:space:]]*=?[[:space:]]*"[0-9.]+"' upstream --include=build.gradle --include=build.gradle.kts | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
+          echo "NDK: ${NDK:-<none declared>}"
+          if [ -n "$NDK" ]; then yes | sdkmanager "ndk;$NDK" || true; fi
+
+      - name: Python deps
+        run: pip install pillow
+
+      - name: Optional own google-services.json
+        env:
+          GS: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GS" ]; then echo "$GS" > "$RUNNER_TEMP/gs.json"; echo "GOOGLE_SERVICES_JSON_PATH=$RUNNER_TEMP/gs.json" >> "$GITHUB_ENV"; fi
+
+      - name: Patch and build (with automatic fallback)
+        env:
+          KS: ${{ secrets.KEYSTORE_BASE64 }}
+          KP: ${{ secrets.KEYSTORE_PASSWORD }}
+          KA: ${{ secrets.KEY_ALIAS }}
+        run: bash scripts/build.sh
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AHbsolute-apk-${{ env.MODE }}
+          path: upstream//build/outputs/apk//*.apk
+          if-no-files-found: error
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
