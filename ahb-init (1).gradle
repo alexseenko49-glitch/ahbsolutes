@@ -1,0 +1,28 @@
+// Gradle init script used by AHbsolute CI.
+//  - forces the package id when build.gradle could not be patched as text (marker file .ahb_force_pkg)
+//  - disables R8/minify when AH_NO_MINIFY=1 (R8 can run out of memory on free GitHub runners)
+gradle.allprojects { p ->
+    p.afterEvaluate {
+        try {
+            if (p.plugins.hasPlugin('com.android.application')) {
+                def pkg = System.getenv('AH_PACKAGE') ?: 'com.ahbsolute.app'
+                if (new File(p.rootProject.projectDir, '.ahb_force_pkg').exists()) {
+                    p.android.defaultConfig.applicationId = pkg
+                    p.android.productFlavors.all { f ->
+                        if (f.applicationId != null) { f.applicationId = pkg }
+                    }
+                    println "AHbsolute: applicationId forced to ${pkg} in ${p.path}"
+                }
+                if (System.getenv('AH_NO_MINIFY') == '1') {
+                    p.android.buildTypes.all { bt ->
+                        try { bt.minifyEnabled = false } catch (Throwable t1) { bt.isMinifyEnabled = false }
+                        try { bt.shrinkResources = false } catch (Throwable t2) { bt.isShrinkResources = false }
+                    }
+                    println "AHbsolute: R8/minify disabled in ${p.path}"
+                }
+            }
+        } catch (Throwable t) {
+            println "AHbsolute: init script step skipped: ${t}"
+        }
+    }
+}
