@@ -5,19 +5,14 @@ import android.content.SharedPreferences;
 import android.graphics.Path;
 import android.graphics.RectF;
 
-import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
-import org.telegram.messenger.MessagesController;
-import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.UserConfig;
-import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.LaunchActivity;
 
 import java.io.File;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Locale;
 
@@ -137,35 +132,10 @@ public class AHbsolute {
 
     /** Writes/removes the invisible marker in the user's own last name (opt-in only). */
     public static void pushNameMarker() {
-        final int acc = UserConfig.selectedAccount;
-        final TLRPC.User cur = UserConfig.getInstance(acc).getCurrentUser();
-        if (cur == null) return;
-        String base = stripMarker(cur.last_name);
-        String wanted = base + (isShareEnabled() ? markerFor(getMyShape()) : "");
-        String have = cur.last_name == null ? "" : cur.last_name;
-        if (wanted.equals(have)) return;
-
-        TLRPC.TL_account_updateProfile req = new TLRPC.TL_account_updateProfile();
-        req.flags = 3;
-        req.first_name = cur.first_name == null ? "" : cur.first_name;
-        req.last_name = wanted;
-        ConnectionsManager.getInstance(acc).sendRequest(req, (response, error) -> {
-            if (response instanceof TLRPC.User) {
-                final TLRPC.User nu = (TLRPC.User) response;
-                AndroidUtilities.runOnUIThread(() -> {
-                    ArrayList<TLRPC.User> l = new ArrayList<>();
-                    l.add(nu);
-                    MessagesController.getInstance(acc).putUser(nu, false);
-                    UserConfig.getInstance(acc).setCurrentUser(nu);
-                    UserConfig.getInstance(acc).saveConfig(true);
-                    MessagesStorage.getInstance(acc).putUsersAndChats(l, null, false, true);
-                    NotificationCenter.getInstance(acc).postNotificationName(
-                            NotificationCenter.updateInterfaces, MessagesController.UPDATE_MASK_NAME);
-                    notifyUi();
-                });
-            }
-        });
+        AHbsoluteNameSync.push();
     }
+
+    public static String markerForShape(int shape) { return markerFor(shape); }
 
     private static final HashMap<Long, Path> PATHS = new HashMap<>();
 
