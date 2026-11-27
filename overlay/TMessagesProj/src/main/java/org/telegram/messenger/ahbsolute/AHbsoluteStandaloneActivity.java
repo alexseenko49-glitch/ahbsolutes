@@ -28,7 +28,7 @@ import org.telegram.ui.ActionBar.Theme;
  */
 public class AHbsoluteStandaloneActivity extends Activity implements AHbsoluteSettingsUi.Host {
 
-    private LinearLayout content;
+    private AHbsoluteCardList content;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -42,7 +42,6 @@ public class AHbsoluteStandaloneActivity extends Activity implements AHbsoluteSe
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(safeColor(Theme.key_windowBackgroundGray, 0xFFF0F0F0));
 
         // ---- action bar, same metrics as Telegram's ActionBar (56dp, back arrow, 20sp medium title) ----
         FrameLayout bar = new FrameLayout(this);
@@ -65,12 +64,13 @@ public class AHbsoluteStandaloneActivity extends Activity implements AHbsoluteSe
         bar.addView(title, tlp);
         root.addView(bar, new LinearLayout.LayoutParams(-1, AndroidUtilities.dp(56)));
 
+        FrameLayout backdrop = AHbsoluteSettingsUi.backdrop(this);
         ScrollView sv = new ScrollView(this);
         sv.setVerticalScrollBarEnabled(false);
-        content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
+        content = new AHbsoluteCardList(this);
         sv.addView(content, new FrameLayout.LayoutParams(-1, -2));
-        root.addView(sv, new LinearLayout.LayoutParams(-1, 0, 1f));
+        backdrop.addView(sv, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(backdrop, new LinearLayout.LayoutParams(-1, 0, 1f));
         setContentView(root);
 
         try {
@@ -116,6 +116,11 @@ public class AHbsoluteStandaloneActivity extends Activity implements AHbsoluteSe
     @Override
     public Runnable interfaceEditor() {
         return null; // the side-menu editor lives inside Telegram: Settings → AHbsolute
+    }
+
+    @Override
+    public Runnable reposts() {
+        return null; // the reposts list opens channels, which needs Telegram's own window
     }
 
     @Override

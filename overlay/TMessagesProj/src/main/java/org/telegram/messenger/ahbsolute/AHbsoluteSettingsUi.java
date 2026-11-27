@@ -5,9 +5,11 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.text.TextUtils;
@@ -23,7 +25,6 @@ import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.HeaderCell;
-import org.telegram.ui.Cells.ShadowSectionCell;
 import org.telegram.ui.Cells.TextCell;
 import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
@@ -35,123 +36,128 @@ import java.util.ArrayList;
 import static org.telegram.messenger.ahbsolute.AHbsolute.t;
 
 /**
- * The single AHbsolute settings screen, built from Telegram's own list cells (HeaderCell, TextCheckCell, TextSettingsCell,
- * TextInfoPrivacyCell, ShadowSectionCell) so it looks exactly like any other Telegram settings page.
- * Used by Settings → AHbsolute (inside Telegram) and by the second launcher icon "AHbsolute ⚙".
+ * The single AHbsolute settings screen, built from Telegram's own list cells inside rounded sections
+ * (the same look as Telegram's current settings pages). Used by Settings → AHbsolute and by "AHbsolute ⚙".
  */
 public class AHbsoluteSettingsUi {
 
     public static final int REQ_BANNER = 9301;
+    private static final String TARGET_BANNER = "banner", TARGET_WALL = "wall";
+    private static String pickTarget = TARGET_BANNER;
 
     public interface Host {
         /** start the system picture picker; the result must go to {@link #onPicked} */
         void pickBanner();
         /** null when the side-menu editor cannot be opened from this host */
         Runnable interfaceEditor();
+        /** null when the reposts screen cannot be opened from this host */
+        Runnable reposts();
         void rebuild();
     }
 
     private static int dp(float v) { return AndroidUtilities.dp(v); }
     private static int color(int key) { return Theme.getColor(key); }
 
-    /** intent for the picture picker */
     public static Intent pickIntent() {
         Intent i = new Intent(Intent.ACTION_GET_CONTENT);
         i.setType("image/*");
         i.addCategory(Intent.CATEGORY_OPENABLE);
-        return Intent.createChooser(i, t("Выберите баннер", "Choose a banner"));
+        return Intent.createChooser(i, t("Выберите картинку", "Choose a picture"));
     }
 
-    /** handles the picker result (both hosts call this from onActivityResult) */
     public static void onPicked(final Context c, int requestCode, int resultCode, Intent data, final Host host) {
         if (requestCode != REQ_BANNER || resultCode != android.app.Activity.RESULT_OK || data == null || data.getData() == null) return;
-        Toast.makeText(c, t("Загружаю баннер…", "Loading banner…"), Toast.LENGTH_SHORT).show();
+        Toast.makeText(c, t("Загружаю картинку…", "Loading picture…"), Toast.LENGTH_SHORT).show();
+        final String target = pickTarget;
         AHbsoluteBanner.importFromUri(c, data.getData(), (id, err) -> {
             if (id == null) {
                 Toast.makeText(c, t("Не удалось загрузить картинку: ", "Could not load the picture: ") + err, Toast.LENGTH_LONG).show();
                 return;
             }
-            AHbsoluteBanner.setMode(id);
+            if (TARGET_WALL.equals(target)) AHbsoluteProfile.setWallpaper(id); else AHbsoluteBanner.setMode(id);
             AHbsoluteBanner.invalidate();
+            AHbsoluteProfile.invalidate();
             if (host != null) host.rebuild();
         });
     }
 
     /* ------------------------------------------------------------ building blocks ------------------------------------------------------------ */
 
-    private static void header(Context c, LinearLayout list, String text) {
+    private static void header(Context c, AHbsoluteCardList list, String text) {
         HeaderCell h = new HeaderCell(c);
         h.setText(text);
-        h.setBackgroundColor(color(Theme.key_windowBackgroundWhite));
-        list.addView(h, new LinearLayout.LayoutParams(-1, -2));
+        list.addCard(h, -2);
     }
 
-    private static void shadow(Context c, LinearLayout list) {
-        list.addView(new ShadowSectionCell(c), new LinearLayout.LayoutParams(-1, -2));
-    }
-
-    /** grey hint under a section (ends the section, like in Telegram) */
-    private static void info(Context c, LinearLayout list, String text) {
+    /** grey hint under a section; ends the card */
+    private static void info(Context c, AHbsoluteCardList list, String text) {
         TextInfoPrivacyCell cell = new TextInfoPrivacyCell(c);
         cell.setText(text);
-        cell.setBackground(Theme.getThemedDrawableByKey(c, R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow));
-        list.addView(cell, new LinearLayout.LayoutParams(-1, -2));
+        list.addPlain(cell);
     }
 
-    private static View white(View v) {
-        v.setBackground(Theme.getSelectorDrawable(true));
+    private static View sel(View v) {
+        v.setBackground(Theme.getSelectorDrawable(false));
         return v;
     }
 
-    private static void check(Context c, LinearLayout list, String text, boolean value, boolean divider, final Runnable onToggle) {
+    private static void check(Context c, AHbsoluteCardList list, String text, boolean value, boolean divider, final Runnable onToggle) {
         final TextCheckCell cell = new TextCheckCell(c);
         cell.setTextAndCheck(text, value, divider);
-        white(cell);
+        sel(cell);
         cell.setOnClickListener(v -> {
             onToggle.run();
             cell.setChecked(!cell.isChecked());
         });
-        list.addView(cell, new LinearLayout.LayoutParams(-1, -2));
+        list.addCard(cell, -2);
     }
 
-    private static void uiCheck(final Context c, LinearLayout list, String text, final String key, boolean divider) {
+    private static void uiCheck(final Context c, AHbsoluteCardList list, String text, final String key, boolean divider) {
         check(c, list, text, AHbsoluteUi.getBool(key), divider, () -> AHbsoluteUi.toggle(c, key));
     }
 
-    /** "Title ........ value" row that opens a Telegram choice dialog */
-    private static void choice(final Context c, LinearLayout list, final String title, final String key, final int[] values, final String[] names,
-                               final int def, boolean divider, final Host host) {
-        int cur = AHbsoluteUi.getInt(key, def);
-        String value = null;
-        for (int i = 0; i < values.length; i++) if (values[i] == cur) value = names[i];
-        if (value == null) value = cur + "%";
+    private interface Pick { void accept(int which); }
+
+    private static void dialog(Context c, String title, CharSequence[] names, final Pick onPick) {
+        try {
+            new AlertDialog.Builder(c).setTitle(title).setItems(names, (d, which) -> onPick.accept(which)).show();
+        } catch (Throwable e) {
+            onPick.accept(0);
+        }
+    }
+
+    /** "Title ........ value" row that opens a Telegram choice dialog; values are stored as strings */
+    private static void choice(final Context c, AHbsoluteCardList list, final String title, final String key, final String[] values, final String[] names,
+                               final String def, boolean divider, final Host host) {
+        String cur = AHbsoluteUi.getStr(key, def);
+        String value = cur;
+        for (int i = 0; i < values.length; i++) if (values[i].equals(cur)) value = names[i];
         TextSettingsCell cell = new TextSettingsCell(c);
         cell.setTextAndValue(title, value, divider);
-        white(cell);
-        cell.setOnClickListener(v -> {
-            try {
-                new AlertDialog.Builder(c)
-                        .setTitle(title)
-                        .setItems(names, (d, which) -> {
-                            AHbsoluteUi.putInt(key, values[which]);
-                            AHbsoluteBanner.invalidate();
-                            host.rebuild();
-                        })
-                        .show();
-            } catch (Throwable e) {
-                // fallback: cycle through the values
-                int idx = 0;
-                for (int i = 0; i < values.length; i++) if (values[i] == AHbsoluteUi.getInt(key, def)) idx = i;
-                AHbsoluteUi.putInt(key, values[(idx + 1) % values.length]);
-                AHbsoluteBanner.invalidate();
-                host.rebuild();
-            }
-        });
-        list.addView(cell, new LinearLayout.LayoutParams(-1, -2));
+        sel(cell);
+        cell.setOnClickListener(v -> dialog(c, title, names, which -> {
+            AHbsoluteUi.putStr(key, values[which]);
+            AHbsoluteBanner.invalidate();
+            AHbsoluteProfile.invalidate();
+            host.rebuild();
+        }));
+        list.addCard(cell, -2);
+    }
+
+    private static String[] pct(int... v) {
+        String[] r = new String[v.length];
+        for (int i = 0; i < v.length; i++) r[i] = String.valueOf(v[i]);
+        return r;
+    }
+
+    private static String[] pctNames(String zero, int... v) {
+        String[] r = new String[v.length];
+        for (int i = 0; i < v.length; i++) r[i] = v[i] == 0 && zero != null ? zero : v[i] + "%";
+        return r;
     }
 
     /** row with a picture on the left, a title and Telegram's radio button on the right */
-    private static LinearLayout radioRow(Context c, View image, String title, String subtitle, boolean checked, boolean divider) {
+    private static LinearLayout radioRow(Context c, final View image, String title, String subtitle, boolean checked, boolean divider) {
         final boolean needDivider = divider;
         LinearLayout row = new LinearLayout(c) {
             @Override protected void onDraw(Canvas canvas) {
@@ -165,7 +171,7 @@ public class AHbsoluteSettingsUi {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(image != null ? 16 : 21), 0, dp(21), 0);
-        white(row);
+        sel(row);
         if (image != null) {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(44), dp(32));
             lp.rightMargin = dp(16);
@@ -220,75 +226,214 @@ public class AHbsoluteSettingsUi {
         return iv;
     }
 
-    /* ------------------------------------------------------------ profile preview ------------------------------------------------------------ */
+    /** human name of a picture id (banner / wallpaper) */
+    private static String pictureName(Context c, String id) {
+        if (id == null || AHbsoluteBanner.OFF.equals(id)) return t("Нет", "None");
+        if (AHbsoluteBanner.THEME.equals(id)) return t("По теме", "From theme");
+        for (int i = 0; i < AHbsoluteBanner.BUILTIN.length; i++) if (AHbsoluteBanner.BUILTIN[i].equals(id)) return AHbsoluteBanner.BUILTIN_NAMES[i];
+        ArrayList<String> mine = AHbsoluteBanner.userBanners(c);
+        int k = mine.indexOf(id);
+        return k >= 0 ? t("Моя картинка ", "My picture ") + (k + 1) : t("Своя", "Custom");
+    }
 
+    /* ------------------------------------------------------------ live preview ------------------------------------------------------------ */
+
+    /** a miniature of the profile: wallpaper, glass cards, banner, avatar position/size/shape, name alignment */
     private static class Preview extends View {
         private final Paint bg = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint av = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint name = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint status = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF r = new RectF();
         Preview(Context c) {
             super(c);
-            name.setTextAlign(Paint.Align.CENTER);
             name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-            status.setTextAlign(Paint.Align.CENTER);
         }
         @Override protected void onMeasure(int w, int h) {
-            super.onMeasure(w, MeasureSpec.makeMeasureSpec(dp(180), MeasureSpec.EXACTLY));
+            super.onMeasure(w, MeasureSpec.makeMeasureSpec(dp(300), MeasureSpec.EXACTLY));
         }
         @Override protected void onDraw(Canvas canvas) {
-            int w = getWidth(), h = getHeight();
-            int head;
-            try { head = Theme.getColor(Theme.key_avatar_backgroundActionBarBlue); } catch (Throwable e) { head = 0xFF5B95C2; }
-            float a = 1f;
-            try { a = AHbsoluteUi.profileHeaderAlpha(); } catch (Throwable ignored) { }
-            bg.setColor(head);
-            bg.setAlpha(Math.round(255 * a));
+            Context c = getContext();
+            int w = getWidth(), h = getHeight(), head = dp(176);
+            boolean wall = !AHbsoluteBanner.OFF.equals(AHbsoluteProfile.wallpaper());
+            boolean glass = AHbsoluteProfile.glassOn();
+            // page background
+            bg.setShader(null);
+            bg.setColor(color(Theme.key_windowBackgroundGray));
             canvas.drawRect(0, 0, w, h, bg);
-            AHbsoluteBanner.drawPreview(getContext(), canvas, w, h);
-            float r = dp(38), cx = w / 2f, cy = dp(66);
-            av.setColor(0xFF8E7CC3);
+            if (wall) {
+                Bitmap b = AHbsoluteProfile.bitmap(c);
+                if (b != null) AHbsoluteProfile.drawCover(canvas, b, w, h);
+            }
+            // header
+            int headColor;
+            try { headColor = Theme.getColor(Theme.key_avatar_backgroundActionBarBlue); } catch (Throwable e) { headColor = 0xFF5B95C2; }
+            float ha = 1f;
+            try { ha = AHbsoluteUi.profileHeaderAlpha(); } catch (Throwable ignored) { }
+            bg.setColor(headColor);
+            bg.setAlpha(Math.round(255 * ha));
+            canvas.drawRect(0, 0, w, head, bg);
+            if (!AHbsoluteBanner.OFF.equals(AHbsoluteBanner.mode())) AHbsoluteBanner.drawPreview(c, canvas, w, head);
+            // avatar
+            float size = dp(72) * Math.max(60, Math.min(140, AHbsoluteProfile.avatarSize())) / 100f;
+            int pos = AHbsoluteProfile.avatarPos();
+            float ax = pos == AHbsoluteProfile.POS_LEFT ? dp(24) : pos == AHbsoluteProfile.POS_RIGHT ? w - size - dp(24) : (w - size) / 2f;
+            float ay = dp(22);
+            av.setShader(new LinearGradient(ax, ay, ax + size, ay + size, 0xFFB79CFF, 0xFF6D4AFF, Shader.TileMode.CLAMP));
             canvas.save();
-            canvas.translate(cx - r, cy - r);
-            canvas.drawPath(AHbsolute.cachedPath(AHbsolute.getMyShape(), r * 2, r * 2), av);
+            canvas.translate(ax, ay);
+            canvas.drawPath(AHbsolute.cachedPath(AHbsolute.getMyShape(), size, size), av);
             canvas.restore();
+            // name + status
+            int al = AHbsoluteProfile.nameAlign();
+            Paint.Align align = al == AHbsoluteProfile.POS_LEFT ? Paint.Align.LEFT : al == AHbsoluteProfile.POS_RIGHT ? Paint.Align.RIGHT : Paint.Align.CENTER;
+            float tx = al == AHbsoluteProfile.POS_LEFT ? dp(24) : al == AHbsoluteProfile.POS_RIGHT ? w - dp(24) : w / 2f;
+            name.setTextAlign(align);
+            status.setTextAlign(align);
             name.setColor(Color.WHITE);
-            name.setTextSize(dp(18));
-            canvas.drawText(t("Вы", "You"), cx, cy + r + dp(28), name);
+            name.setTextSize(dp(19) * Math.max(80, Math.min(130, AHbsoluteProfile.nameSize())) / 100f);
+            float ny = ay + size + dp(30);
+            canvas.drawText(t("Вы", "You"), tx, ny, name);
             status.setColor(0xCCFFFFFF);
             status.setTextSize(dp(13));
-            canvas.drawText(t("в сети", "online"), cx, cy + r + dp(48), status);
+            canvas.drawText(t("в сети", "online"), tx, ny + dp(20), status);
+            // two section cards
+            int card = color(Theme.key_windowBackgroundWhite);
+            float top = head + dp(12);
+            for (int i = 0; i < 2; i++) {
+                float ch = i == 0 ? dp(58) : dp(36);
+                r.set(dp(12), top, w - dp(12), top + ch);
+                if (glass) {
+                    AHbsoluteProfile.drawGlassSection(canvas, r, dp(16), dp(16), 1f, card);
+                } else {
+                    bg.setColor(card);
+                    canvas.drawRoundRect(r, dp(16), dp(16), bg);
+                }
+                line.setColor(color(Theme.key_windowBackgroundWhiteBlackText));
+                line.setAlpha(150);
+                canvas.drawRoundRect(dp(28), top + dp(13), dp(28) + w * 0.38f, top + dp(22), dp(4), dp(4), line);
+                if (i == 0) {
+                    line.setAlpha(80);
+                    canvas.drawRoundRect(dp(28), top + dp(33), dp(28) + w * 0.24f, top + dp(41), dp(4), dp(4), line);
+                }
+                top += ch + dp(10);
+            }
         }
+    }
+
+    /** fixed screen background: grey, or the design wallpaper behind glass cards when Absolute Design 1 is on */
+    public static android.widget.FrameLayout backdrop(Context c) {
+        android.widget.FrameLayout f = new android.widget.FrameLayout(c) {
+            @Override protected void onDraw(Canvas canvas) {
+                canvas.drawColor(color(Theme.key_windowBackgroundGray));
+                if (AHbsoluteDesign.isOn(getContext())) {
+                    Bitmap b = AHbsoluteProfile.bitmap(getContext());
+                    if (b != null) AHbsoluteProfile.drawCover(canvas, b, getWidth(), getHeight());
+                }
+            }
+        };
+        f.setWillNotDraw(false);
+        return f;
     }
 
     /* ------------------------------------------------------------ the screen ------------------------------------------------------------ */
 
-    public static void build(final Context c, final LinearLayout list, final Host host) {
+    public static void build(final Context c, final AHbsoluteCardList list, final Host host) {
         list.removeAllViews();
         try { Theme.createCommonResources(c); } catch (Throwable ignored) { }
+        list.glass = AHbsoluteDesign.isOn(c);
+        if (list.getParent() instanceof View && ((View) list.getParent()).getParent() instanceof View) ((View) ((View) list.getParent()).getParent()).invalidate();
+        list.gap(12);
+
+        // ---------- preview ----------
+        list.addCard(new Preview(c), -2);
+        list.gap(16);
+
+        // ---------- Absolute Design 1 ----------
+        final TextCheckCell design = new TextCheckCell(c);
+        design.setTextAndValueAndCheck(AHbsoluteDesign.title(), t("Новый интерфейс AHbsolute", "The new AHbsolute interface"),
+                AHbsoluteDesign.isOn(c), false, false);
+        sel(design);
+        design.setOnClickListener(v -> {
+            boolean on = !AHbsoluteDesign.isOn(c);
+            String err = AHbsoluteDesign.setOn(c, on);
+            if (err != null) Toast.makeText(c, t("Тема не применилась: ", "Theme was not applied: ") + err, Toast.LENGTH_LONG).show();
+            else if (on) Toast.makeText(c, t("Absolute Design 1 включён ✨ Откройте свой профиль.", "Absolute Design 1 is on ✨ Open your profile."), Toast.LENGTH_LONG).show();
+            host.rebuild();
+        });
+        list.addCard(design, -2);
+        info(c, list, AHbsoluteDesign.subtitle());
+
+        // ---------- profile ----------
+        header(c, list, t("Профиль", "Profile"));
+        String wp = AHbsoluteProfile.wallpaper();
+        TextSettingsCell wall = new TextSettingsCell(c);
+        wall.setTextAndValue(t("Обои профиля", "Profile wallpaper"), pictureName(c, wp), true);
+        sel(wall);
+        wall.setOnClickListener(v -> {
+            final ArrayList<String> ids = new ArrayList<>();
+            final ArrayList<String> names = new ArrayList<>();
+            ids.add(AHbsoluteBanner.OFF); names.add(t("Нет", "None"));
+            ids.add("upload"); names.add(t("Загрузить из галереи…", "Upload from gallery…"));
+            ids.add(AHbsoluteBanner.THEME); names.add(t("По теме", "From theme"));
+            for (String id : AHbsoluteBanner.userBanners(c)) { ids.add(id); names.add(pictureName(c, id)); }
+            for (int i = 0; i < AHbsoluteBanner.BUILTIN.length; i++) { ids.add(AHbsoluteBanner.BUILTIN[i]); names.add(AHbsoluteBanner.BUILTIN_NAMES[i]); }
+            dialog(c, t("Обои профиля", "Profile wallpaper"), names.toArray(new CharSequence[0]), which -> {
+                String id = ids.get(which);
+                if ("upload".equals(id)) { pickTarget = TARGET_WALL; host.pickBanner(); return; }
+                AHbsoluteProfile.setWallpaper(id);
+                host.rebuild();
+            });
+        });
+        list.addCard(wall, -2);
+        check(c, list, t("Стеклянный профиль", "Glass profile"), AHbsoluteProfile.glassOn(), true,
+                () -> { AHbsoluteProfile.setGlass(!AHbsoluteProfile.glassOn()); host.rebuild(); });
+        if (AHbsoluteProfile.glassOn()) {
+            choice(c, list, t("Плотность стекла", "Glass density"), "prof_glass_op", pct(35, 50, 62, 75, 88),
+                    pctNames(null, 35, 50, 62, 75, 88), "62", true, host);
+        }
+        if (!AHbsoluteBanner.OFF.equals(wp)) {
+            choice(c, list, t("Размытие обоев", "Wallpaper blur"), "prof_wp_blur", pct(0, 1, 2, 3),
+                    new String[]{t("Нет", "None"), t("Лёгкое", "Light"), t("Среднее", "Medium"), t("Сильное", "Strong")}, "1", true, host);
+            choice(c, list, t("Затемнение обоев", "Wallpaper dimming"), "prof_wp_dim", pct(0, 15, 30, 45),
+                    pctNames(t("Нет", "None"), 0, 15, 30, 45), "0", true, host);
+        }
+        String[] posNames = {t("По центру", "Center"), t("Слева", "Left"), t("Справа", "Right")};
+        choice(c, list, t("Аватар", "Avatar"), "prof_av_pos", pct(0, 1, 2), posNames, "0", true, host);
+        choice(c, list, t("Размер аватара", "Avatar size"), "prof_av_size", pct(80, 90, 100, 115, 130), pctNames(null, 80, 90, 100, 115, 130), "100", true, host);
+        choice(c, list, t("Имя и статус", "Name and status"), "prof_name_align", pct(0, 1, 2), posNames, "0", true, host);
+        choice(c, list, t("Размер имени", "Name size"), "prof_name_size", pct(90, 100, 115, 125), pctNames(null, 90, 100, 115, 125), "100", true, host);
+        choice(c, list, t("Прозрачность шапки", "Header transparency"), "prof_alpha", pct(100, 75, 50, 25, 0),
+                new String[]{t("Обычная", "Normal"), "75%", "50%", "25%", t("Прозрачная", "Transparent")}, "100", true, host);
+        check(c, list, t("Во всех профилях", "On every profile"), AHbsoluteProfile.everywhere(), false,
+                () -> { AHbsoluteProfile.setEverywhere(!AHbsoluteProfile.everywhere()); host.rebuild(); });
+        info(c, list, t("Обои, стекло и расположение аватара видите вы в AHbsolute. Выключено «Во всех профилях» — меняется только ваш профиль.",
+                "Wallpaper, glass and avatar layout are shown in your AHbsolute. With \"On every profile\" off only your own profile changes."));
 
         // ---------- banner ----------
-        list.addView(new Preview(c), new LinearLayout.LayoutParams(-1, -2));
         header(c, list, t("Баннер профиля", "Profile banner"));
         String mode = AHbsoluteBanner.mode();
-
         LinearLayout none = radioRow(c, thumb(c, null, color(Theme.key_windowBackgroundGray)), t("Без баннера", "No banner"), null,
                 AHbsoluteBanner.OFF.equals(mode), true);
         none.setOnClickListener(v -> { AHbsoluteBanner.setMode(AHbsoluteBanner.OFF); AHbsoluteBanner.invalidate(); host.rebuild(); });
-        list.addView(none, new LinearLayout.LayoutParams(-1, dp(56)));
-
+        list.addCard(none, dp(56));
         ArrayList<String> mine = AHbsoluteBanner.userBanners(c);
         for (int i = 0; i < mine.size(); i++) {
             final String id = mine.get(i);
             LinearLayout row = radioRow(c, thumb(c, AHbsoluteBanner.load(c, id, 8), Color.GRAY),
-                    t("Мой баннер ", "My banner ") + (i + 1), t("Нажмите и удерживайте, чтобы удалить", "Long press to delete"), id.equals(mode), true);
+                    t("Моя картинка ", "My picture ") + (i + 1), t("Удерживайте, чтобы удалить", "Hold to delete"), id.equals(mode), true);
             row.setOnClickListener(v -> { AHbsoluteBanner.setMode(id); AHbsoluteBanner.invalidate(); host.rebuild(); });
             row.setOnLongClickListener(v -> {
                 try {
                     new AlertDialog.Builder(c)
-                            .setTitle(t("Удалить баннер?", "Delete banner?"))
-                            .setMessage(t("Картинка будет удалена из AHbsolute.", "The picture will be removed from AHbsolute."))
-                            .setPositiveButton(t("Удалить", "Delete"), (d, w) -> { AHbsoluteBanner.delete(c, id); host.rebuild(); })
+                            .setTitle(t("Удалить картинку?", "Delete picture?"))
+                            .setMessage(t("Она пропадёт из баннеров и обоев.", "It will be removed from banners and wallpapers."))
+                            .setPositiveButton(t("Удалить", "Delete"), (d, w) -> {
+                                AHbsoluteBanner.delete(c, id);
+                                if (id.equals(AHbsoluteProfile.wallpaper())) AHbsoluteProfile.setWallpaper(AHbsoluteBanner.OFF);
+                                host.rebuild();
+                            })
                             .setNegativeButton(t("Отмена", "Cancel"), null)
                             .show();
                 } catch (Throwable e) {
@@ -297,45 +442,54 @@ public class AHbsoluteSettingsUi {
                 }
                 return true;
             });
-            list.addView(row, new LinearLayout.LayoutParams(-1, dp(56)));
+            list.addCard(row, dp(56));
         }
-
         for (int i = 0; i < AHbsoluteBanner.BUILTIN.length; i++) {
             final String id = AHbsoluteBanner.BUILTIN[i];
             LinearLayout row = radioRow(c, thumb(c, AHbsoluteBanner.load(c, id, 16), Color.GRAY), AHbsoluteBanner.BUILTIN_NAMES[i], null, id.equals(mode), true);
             row.setOnClickListener(v -> { AHbsoluteBanner.setMode(id); AHbsoluteBanner.invalidate(); host.rebuild(); });
-            list.addView(row, new LinearLayout.LayoutParams(-1, dp(56)));
+            list.addCard(row, dp(56));
         }
         LinearLayout byTheme = radioRow(c, null, t("По теме AHbsolute", "Match AHbsolute theme"), null, AHbsoluteBanner.THEME.equals(mode), true);
         byTheme.setOnClickListener(v -> { AHbsoluteBanner.setMode(AHbsoluteBanner.THEME); AHbsoluteBanner.invalidate(); host.rebuild(); });
-        list.addView(byTheme, new LinearLayout.LayoutParams(-1, dp(56)));
-
+        list.addCard(byTheme, dp(56));
         TextCell upload = new TextCell(c);
         upload.setTextAndIcon(t("Загрузить баннер из галереи", "Upload banner from gallery"), R.drawable.msg_addphoto, false);
         upload.setColors(Theme.key_windowBackgroundWhiteBlueIcon, Theme.key_windowBackgroundWhiteBlueButton);
-        white(upload);
-        upload.setOnClickListener(v -> host.pickBanner());
-        list.addView(upload, new LinearLayout.LayoutParams(-1, -2));
-        info(c, list, t("Баннер показывается за аватаркой и именем в профиле. Подойдёт любая картинка, лучше горизонтальная. Баннер видите только вы — в Telegram нет поля, через которое его можно передать другим.",
-                "The banner is shown behind the avatar and the name in the profile. Any picture works, landscape is best. Only you see it: Telegram has no field to send it to others."));
+        sel(upload);
+        upload.setOnClickListener(v -> { pickTarget = TARGET_BANNER; host.pickBanner(); });
+        list.addCard(upload, -2);
+        info(c, list, t("Баннер показывается за аватаркой и именем. Подойдёт любая картинка, лучше горизонтальная. Загруженные картинки можно ставить и на обои профиля.",
+                "The banner is shown behind the avatar and the name. Any picture works, landscape is best. Uploaded pictures can also be used as the profile wallpaper."));
 
         if (!AHbsoluteBanner.OFF.equals(mode)) {
             header(c, list, t("Настройка баннера", "Banner settings"));
-            int[] p100 = {100, 85, 70, 55, 40};
-            choice(c, list, t("Яркость", "Brightness"), "banner_op", p100, new String[]{"100%", "85%", "70%", "55%", "40%"}, 100, true, host);
-            choice(c, list, t("Затемнение", "Darkening"), "banner_dim", new int[]{0, 15, 30, 45, 60},
-                    new String[]{t("Нет", "None"), "15%", "30%", "45%", "60%"}, 15, true, host);
-            choice(c, list, t("Затухание книзу", "Fade to bottom"), "banner_fade", new int[]{0, 20, 40, 70, 100},
-                    new String[]{t("Нет", "None"), "20%", "40%", "70%", "100%"}, 40, true, host);
-            choice(c, list, t("Положение картинки", "Picture position"), "banner_pos", new int[]{0, 50, 100},
-                    new String[]{t("Сверху", "Top"), t("По центру", "Center"), t("Снизу", "Bottom")}, 50, true, host);
-            choice(c, list, t("Прозрачность шапки", "Header transparency"), "prof_alpha", new int[]{100, 75, 50, 25, 0},
-                    new String[]{t("Обычная", "Normal"), "75%", "50%", "25%", t("Прозрачная", "Transparent")}, 100, true, host);
+            choice(c, list, t("Яркость", "Brightness"), "banner_op", pct(100, 85, 70, 55, 40), pctNames(null, 100, 85, 70, 55, 40), "100", true, host);
+            choice(c, list, t("Затемнение", "Darkening"), "banner_dim", pct(0, 15, 30, 45, 60), pctNames(t("Нет", "None"), 0, 15, 30, 45, 60), "15", true, host);
+            choice(c, list, t("Затухание книзу", "Fade to bottom"), "banner_fade", pct(0, 20, 40, 70, 100), pctNames(t("Нет", "None"), 0, 20, 40, 70, 100), "40", true, host);
+            choice(c, list, t("Положение картинки", "Picture position"), "banner_pos", pct(0, 50, 100),
+                    new String[]{t("Сверху", "Top"), t("По центру", "Center"), t("Снизу", "Bottom")}, "50", true, host);
             check(c, list, t("Во всех профилях", "On every profile"), AHbsoluteBanner.everywhere(), false,
                     () -> { AHbsoluteBanner.setEverywhere(!AHbsoluteBanner.everywhere()); host.rebuild(); });
             info(c, list, t("Выключено — баннер только в вашем профиле. Включено — за аватарками всех людей и чатов.",
                     "Off: only on your own profile. On: behind the avatars of all people and chats."));
         }
+
+        // ---------- reposts ----------
+        header(c, list, t("Репосты", "Reposts"));
+        uiCheck(c, list, t("Кнопка «Репост» в каналах", "\"Repost\" button in channels"), "repost", true);
+        final Runnable reposts = host.reposts();
+        TextSettingsCell rp = new TextSettingsCell(c);
+        int n = AHbsoluteReposts.count();
+        rp.setTextAndValue(t("Мои репосты", "My reposts"), String.valueOf(n), false);
+        sel(rp);
+        rp.setOnClickListener(v -> {
+            if (reposts != null) reposts.run();
+            else Toast.makeText(c, t("Откройте их в своём профиле в AHbsolute.", "Open them on your profile in AHbsolute."), Toast.LENGTH_SHORT).show();
+        });
+        list.addCard(rp, -2);
+        info(c, list, t("Зажмите пост в канале → «Репост». Он появится в разделе «Репосты» вашего профиля, оттуда можно перейти к посту.",
+                "Hold a post in a channel → \"Repost\". It appears in the \"Reposts\" section of your profile, and opens the original post from there."));
 
         // ---------- avatar shape ----------
         header(c, list, t("Форма аватара", "Avatar shape"));
@@ -354,11 +508,10 @@ public class AHbsoluteSettingsUi {
                     canvas.restore();
                 }
             };
-            LinearLayout row = radioRow(c, pv, names[i], null, my == shape, i < names.length - 1);
+            LinearLayout row = radioRow(c, pv, names[i], null, my == shape, true);
             row.setOnClickListener(v -> { AHbsolute.setMyShape(shape); host.rebuild(); });
-            list.addView(row, new LinearLayout.LayoutParams(-1, dp(56)));
+            list.addCard(row, dp(56));
         }
-        shadow(c, list);
         check(c, list, t("Показывать форму пользователям AHbsolute", "Show shape to AHbsolute users"), AHbsolute.isShareEnabled(), false,
                 () -> AHbsolute.setShareEnabled(!AHbsolute.isShareEnabled()));
         info(c, list, t("К вашей фамилии добавляется невидимый маркер. В обычном Telegram аватар остаётся круглым, имя выглядит так же. Выключите — маркер удалится.",
@@ -383,25 +536,25 @@ public class AHbsoluteSettingsUi {
         if (editor != null) {
             TextSettingsCell order = new TextSettingsCell(c);
             order.setText(t("Порядок пунктов бокового меню", "Side menu order"), false);
-            white(order);
+            sel(order);
             order.setOnClickListener(v -> editor.run());
-            list.addView(order, new LinearLayout.LayoutParams(-1, -2));
+            list.addCard(order, -2);
         }
         info(c, list, t("Выключите «Функции оформления» — и Telegram будет выглядеть как обычно. Часть эффектов применяется после перезапуска приложения.",
                 "Turn the main switch off and everything looks like regular Telegram. Some effects apply after restarting the app."));
 
         // ---------- themes ----------
         header(c, list, t("Темы AHbsolute", "AHbsolute themes"));
-        String sel = AHbsoluteThemes.selectedId(c);
-        LinearLayout std = radioRow(c, thumb(c, null, 0xFF5B95C2), t("Стандартная тема Telegram", "Default Telegram theme"), null, sel == null || sel.isEmpty(), true);
+        String selTheme = AHbsoluteThemes.selectedId(c);
+        LinearLayout std = radioRow(c, thumb(c, null, 0xFF5B95C2), t("Стандартная тема Telegram", "Default Telegram theme"), null, selTheme == null || selTheme.isEmpty(), true);
         std.setOnClickListener(v -> themeResult(c, AHbsoluteThemes.reset(c), host));
-        list.addView(std, new LinearLayout.LayoutParams(-1, dp(56)));
+        list.addCard(std, dp(56));
         for (int i = 0; i < AHbsoluteBanner.BUILTIN.length; i++) {
-            final int idx = i;
-            LinearLayout row = radioRow(c, thumb(c, AHbsoluteBanner.load(c, AHbsoluteBanner.BUILTIN[i], 16), Color.GRAY), AHbsoluteBanner.BUILTIN_NAMES[i], null,
-                    AHbsoluteBanner.BUILTIN[i].equals(sel), i < AHbsoluteBanner.BUILTIN.length - 1);
-            row.setOnClickListener(v -> themeResult(c, AHbsoluteThemes.apply(c, idx), host));
-            list.addView(row, new LinearLayout.LayoutParams(-1, dp(56)));
+            final String id = AHbsoluteBanner.BUILTIN[i];
+            LinearLayout row = radioRow(c, thumb(c, AHbsoluteBanner.load(c, id, 16), Color.GRAY), AHbsoluteBanner.BUILTIN_NAMES[i], null,
+                    id.equals(selTheme), i < AHbsoluteBanner.BUILTIN.length - 1);
+            row.setOnClickListener(v -> themeResult(c, AHbsoluteThemes.apply(c, AHbsoluteThemes.indexOf(id)), host));
+            list.addCard(row, dp(56));
         }
         info(c, list, t("Тема заменяет светлую/тёмную тему Telegram. Автосмена ночной темы отключается.",
                 "The theme replaces Telegram's light/dark theme. Automatic night mode is turned off."));
@@ -413,10 +566,9 @@ public class AHbsoluteSettingsUi {
         info(c, list, t("Выполняется в фоне при запуске и касается только кэша приложения.", "Runs in the background on start and only touches the app cache."));
 
         // ---------- about ----------
-        header(c, list, t("О приложении", "About"));
         TextSettingsCell diag = new TextSettingsCell(c);
         diag.setText(t("Диагностика", "Diagnostics"), false);
-        white(diag);
+        sel(diag);
         diag.setOnClickListener(v -> {
             try {
                 new AlertDialog.Builder(c).setTitle(t("Диагностика", "Diagnostics")).setMessage(AHbsoluteUi.diagText(c))
@@ -425,13 +577,12 @@ public class AHbsoluteSettingsUi {
                 Toast.makeText(c, AHbsoluteUi.diagText(c), Toast.LENGTH_LONG).show();
             }
         });
-        list.addView(diag, new LinearLayout.LayoutParams(-1, -2));
+        list.addCard(diag, -2);
         TextInfoPrivacyCell about = new TextInfoPrivacyCell(c);
         about.setText(t("AHbsolute — неофициальный клиент. Он использует Telegram API, но не создан и не одобрен Telegram.",
                 "AHbsolute is an unofficial client. It uses the Telegram API but is not made or endorsed by Telegram."));
         about.setTextGravity(Gravity.CENTER_HORIZONTAL);
-        about.setBackground(Theme.getThemedDrawableByKey(c, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
-        list.addView(about, new LinearLayout.LayoutParams(-1, -2));
+        list.addPlain(about);
     }
 
     private static void themeResult(Context c, String err, Host host) {
@@ -441,6 +592,8 @@ public class AHbsoluteSettingsUi {
         } else {
             Toast.makeText(c, t("Не удалось применить тему: ", "Could not apply theme: ") + err, Toast.LENGTH_LONG).show();
         }
+        AHbsoluteBanner.invalidate();
+        AHbsoluteProfile.invalidate();
         host.rebuild();
     }
 }

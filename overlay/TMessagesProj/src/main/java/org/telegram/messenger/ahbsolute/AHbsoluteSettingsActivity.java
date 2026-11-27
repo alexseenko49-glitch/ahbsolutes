@@ -4,18 +4,16 @@ import android.content.Context;
 import android.content.Intent;
 import android.view.View;
 import android.widget.FrameLayout;
-import android.widget.LinearLayout;
 import android.widget.ScrollView;
 
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.BaseFragment;
-import org.telegram.ui.ActionBar.Theme;
 
 /** Settings → AHbsolute (and the side menu entry). Same content as the "AHbsolute ⚙" launcher icon. */
 public class AHbsoluteSettingsActivity extends BaseFragment implements AHbsoluteSettingsUi.Host {
 
-    private LinearLayout content;
+    private AHbsoluteCardList content;
     private Context ctx;
 
     @Override
@@ -28,14 +26,12 @@ public class AHbsoluteSettingsActivity extends BaseFragment implements AHbsolute
             @Override public void onItemClick(int id) { if (id == -1) finishFragment(); }
         });
 
-        FrameLayout frame = new FrameLayout(context);
-        frame.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
+        FrameLayout frame = AHbsoluteSettingsUi.backdrop(context);
         fragmentView = frame;
 
         ScrollView scroll = new ScrollView(context);
         scroll.setVerticalScrollBarEnabled(false);
-        content = new LinearLayout(context);
-        content.setOrientation(LinearLayout.VERTICAL);
+        content = new AHbsoluteCardList(context);
         scroll.addView(content, new FrameLayout.LayoutParams(-1, -2));
         frame.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
 
@@ -62,6 +58,11 @@ public class AHbsoluteSettingsActivity extends BaseFragment implements AHbsolute
         // the editor reorders the old side menu; current Telegram versions have none
         if (AHbsolute.getDrawerIds().length == 0) return null;
         return () -> presentFragment(new AHbsoluteInterfaceActivity());
+    }
+
+    @Override
+    public Runnable reposts() {
+        return () -> presentFragment(new AHbsoluteRepostsActivity());
     }
 
     @Override

@@ -193,8 +193,11 @@ diagnostics
 MODE=""
 TRIED="|"
 for feats in \
+  "menu,avatar,settings,title,profile,pwall,playout,repost,streak,blur,splash,anim,edit" \
+  "menu,avatar,settings,title,profile,pwall,playout,repost,streak,blur,splash" \
+  "menu,avatar,settings,title,profile,pwall,repost,splash" \
+  "menu,avatar,settings,title,profile,repost,splash" \
   "menu,avatar,settings,title,profile,streak,blur,splash,anim,edit" \
-  "menu,avatar,settings,title,profile,streak,blur,splash" \
   "menu,avatar,settings,title,profile,splash" \
   "menu,avatar,settings,title,profile" \
   "menu,avatar,settings,profile" \
@@ -241,5 +244,5 @@ MODE_NAME="${MODE//,/-}"
 echo "MODE=$MODE_NAME" >> "$GITHUB_ENV"
 {
   echo "### AHbsolute build features: \`$MODE\`"
-  echo "menu = side-menu entry + editor, avatar = avatar shapes, settings = row 'AHbsolute' in Settings, profile = custom profile banners. APK is NOT testOnly. R8 minify was off to avoid running out of memory (APK is larger)."
+  echo "menu = side-menu entry + editor, avatar = avatar shapes, settings = row 'AHbsolute' in Settings, profile = custom profile banners, pwall = profile wallpaper + glass, playout = avatar/name layout, repost = reposts. APK is NOT testOnly. R8 minify was off to avoid running out of memory (APK is larger)."
 } >> "$SUMMARY"

@@ -5,7 +5,7 @@ Required patches fail loudly (exit 1) so CI never silently builds something half
 import os, re, sys, json
 
 SAFE = "--safe" in sys.argv
-FEATS = {"menu", "avatar", "settings", "title", "streak", "blur", "splash", "anim", "profile", "edit"}
+FEATS = {"menu", "avatar", "settings", "title", "streak", "blur", "splash", "anim", "profile", "edit", "pwall", "playout", "repost"}
 for _a in sys.argv[1:]:
     if _a.startswith("--features="):
         FEATS = {x.strip() for x in _a.split("=", 1)[1].split(",") if x.strip()}
@@ -563,6 +563,107 @@ if "edit" in FEATS:
         else:
             print("WARN: edit feature skipped: ChatActivity anchors not found (%d/%d)" % (n1, n2))
             show(cha, [r'OPTION_EDIT\b'])
+
+# ---- helper: apply several regex substitutions to one file atomically ----
+def subs_all(path, rules):
+    """rules: list of (regex, replacement_or_func, expected_min_count, max_count or 0 for all). Returns (new_text, error)."""
+    t = read(path)
+    for i, (rx, rep, need, cnt) in enumerate(rules):
+        t, n = re.subn(rx, rep, t, count=cnt)
+        if n < need:
+            return None, "anchor %d not found: %s" % (i + 1, rx[:90])
+    return t, None
+
+AHP = "org.telegram.messenger.ahbsolute.AHbsoluteProfile"
+pfa_path = one("ProfileActivity.java") if ({"pwall", "playout", "repost"} & FEATS) else None
+
+# ---- group "pwall": own picture as profile wallpaper + glass profile (ProfileActivity + RecyclerListView) ----
+if "pwall" in FEATS:
+    rlv2 = one("RecyclerListView.java")
+    if not (pfa_path and rlv2):
+        print("WARN: pwall feature skipped: ProfileActivity.java / RecyclerListView.java not found")
+    else:
+        r_new, e1 = subs_all(rlv2, [
+            (r'(public\s+class\s+RecyclerListView\s+extends\s+RecyclerView[^{]*\{)', r'\1\n    public boolean ahbGlass;', 1, 1),
+            (r'(public\s+void\s+drawBackgroundRect\(Canvas\s+canvas,\s*RectF\s+rect,\s*float\s+topRadius,\s*float\s+bottomRadius,\s*float\s+alpha\)\s*\{)',
+             r'\1\n        if (ahbGlass) { ' + AHP + r'.drawGlassSection(canvas, rect, topRadius, bottomRadius, alpha, Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider)); return; }', 1, 1),
+        ])
+        p_new, e2 = subs_all(pfa_path, [
+            (r'(ThemeBind\.backgroundColor\(listView,\s*Theme\.key_windowBackgroundGray,\s*resourcesProvider\);)',
+             r'\1\n        ' + AHP + r'.setupList(listView, userId, chatId);', 1, 1),
+            (r'(\n(\s*)super\.dispatchDraw\(canvas\);\s*/\*\s*if \(profileTransitionInProgress)',
+             lambda m: '\n' + m.group(2) + AHP + '.drawWallpaper(canvas, this, userId, chatId);' + m.group(1), 1, 1),
+        ])
+        if r_new and p_new:
+            write(rlv2, r_new); write(pfa_path, p_new); features["pwall"] = True
+            print("ok: profile wallpaper + glass profile hooked (ProfileActivity + RecyclerListView)")
+        else:
+            print("WARN: pwall feature skipped:", e1 or e2)
+            show(pfa_path, [r'ThemeBind\.backgroundColor\(listView', r'super\.dispatchDraw\(canvas\);'])
+            show(rlv2, [r'void drawBackgroundRect\('])
+
+# ---- group "playout": avatar left/centre/right, avatar size, name alignment and size (ProfileActivity) ----
+if "playout" in FEATS:
+    if not pfa_path:
+        print("WARN: playout feature skipped: ProfileActivity.java not found")
+    else:
+        p_new, e = subs_all(pfa_path, [
+            (r'avatarX = listView\.getMeasuredWidth\(\) / 2f - \(params\.width \* avatarScale \* 0\.5f\);',
+             'avatarX = ' + AHP + '.avatarX(listView.getMeasuredWidth(), params.width * avatarScale, userId, chatId);', 1, 1),
+            (r'float nameX = viewportWidth / 2f - \(params1\.leftMargin \+ (Math\.min\(nameTextView\.getExactWidth\(\), params1\.width\) \* nameScale) \* 0\.5f\);',
+             lambda m: 'float nameX = ' + AHP + '.textX(viewportWidth / 2f - (params1.leftMargin + ' + m.group(1) + ' * 0.5f), viewportWidth, params1.leftMargin, ' + m.group(1) + ', diff, userId, chatId);', 1, 1),
+            (r'float onlineX = viewportWidth / 2f - \(params2\.leftMargin \+ onlinePadding \+ (Math\.min\(onlineTextView\.getExactWidth\(\), onlineMaxWidth\)) \* 0\.5f\);',
+             lambda m: 'float onlineX = ' + AHP + '.textX(viewportWidth / 2f - (params2.leftMargin + onlinePadding + ' + m.group(1) + ' * 0.5f), viewportWidth, params2.leftMargin + onlinePadding, ' + m.group(1) + ', diff, userId, chatId);', 1, 1),
+            (r'avatarScale = lerp\(intoSize, 96, diff\) / 100f;',
+             'avatarScale = lerp(intoSize, 96f * ' + AHP + '.sizeK(userId, chatId), diff) / 100f;', 1, 1),
+            (r'(final float nameScale = openAnimationInProgress \? AndroidUtilities\.lerp\(getPreviousHeaderTextScale\(PREVIOUS_HEADER_TITLE\), 1\.12f, diff\) : )1\.0f \+ 0\.12f \* diff;',
+             r'\g<1>(1.0f + 0.12f * diff) * ' + AHP + r'.nameK(userId, chatId);', 1, 1),
+        ])
+        if p_new:
+            write(pfa_path, p_new); features["playout"] = True
+            print("ok: profile layout hooks (avatar position/size, name alignment/size)")
+        else:
+            print("WARN: playout feature skipped:", e)
+            show(pfa_path, [r'avatarX = listView', r'float nameX = viewportWidth', r'float onlineX = viewportWidth', r'avatarScale = lerp\(intoSize', r'final float nameScale = openAnimationInProgress'])
+
+# ---- group "repost": "Репост" in the channel post menu + "Репосты" row in your profile ----
+if "repost" in FEATS:
+    cha2 = one("ChatActivity.java")
+    if not (cha2 and pfa_path):
+        print("WARN: repost feature skipped: ChatActivity.java / ProfileActivity.java not found")
+    else:
+        AHR = "org.telegram.messenger.ahbsolute.AHbsoluteReposts"
+        c_new, e1 = subs_all(cha2, [
+            (r'(options\.add\(OPTION_COPY_LINK\);\s*icons\.add\(R\.drawable\.msg_link\);\s*\})',
+             lambda m: m.group(1) + '\n                if (' + AHR + '.canRepost(selectedObject, currentChat)) {'
+                       '\n                    items.add(' + AHR + '.label());'
+                       '\n                    options.add(' + AHR + '.OPTION);'
+                       '\n                    icons.add(R.drawable.msg_share);'
+                       '\n                }', 1, 0),
+            (r'(\n(\s*)case OPTION_FORWARD:\s*\{)',
+             lambda m: '\n' + m.group(2) + 'case ' + AHR + '.OPTION: {\n' + m.group(2) + '    ' + AHR + '.add(getParentActivity(), selectedObject, currentChat);\n'
+                       + m.group(2) + '    selectedObject = null;\n' + m.group(2) + '    selectedObjectGroup = null;\n' + m.group(2) + '    break;\n' + m.group(2) + '}' + m.group(1), 1, 1),
+        ])
+        p_new, e2 = subs_all(pfa_path, [
+            (r'(private\s+int\s+reportRow;)', r'\1\n    private int ahbRepostsRow = -1;', 1, 1),
+            (r'(\n(\s*)reportRow = -1;)', lambda m: m.group(1) + '\n' + m.group(2) + 'ahbRepostsRow = -1;', 1, 1),
+            (r'(\n(\s*)infoEndRow = rowCount - 1;\s*infoSectionRow = rowCount\+\+;)',
+             lambda m: '\n' + m.group(2) + 'if (userId != 0 && userId == getUserConfig().getClientUserId() && ' + AHR + '.enabled()) ahbRepostsRow = rowCount++;' + m.group(1), 1, 1),
+            (r'(\}\s*else\s+if\s*\(position == reportRow\)\s*\{\s*ReportBottomSheet)',
+             lambda m: '} else if (position == ahbRepostsRow) {\n                presentFragment(new org.telegram.messenger.ahbsolute.AHbsoluteRepostsActivity());\n            ' + m.group(1), 1, 1),
+            (r'(\}\s*else\s+if\s*\(position == reportRow\)\s*\{\s*textCell\.setText\()',
+             lambda m: '} else if (position == ahbRepostsRow) {\n                        textCell.setTextAndValueAndIcon(' + AHR + '.rowTitle(), ' + AHR + '.rowValue(), false, R.drawable.msg_share, false);'
+                       '\n                        textCell.setColors(Theme.key_windowBackgroundWhiteGrayIcon, Theme.key_windowBackgroundWhiteBlackText);\n                    ' + m.group(1), 1, 1),
+            (r'(position == settingsTimerRow \|\| position == settingsKeyRow \|\| position == reportRow \|\|)', r'position == ahbRepostsRow || \1', 1, 1),
+            (r'(put\(\+\+pointer, reportRow, sparseIntArray\);)', r'\1\n            put(++pointer, ahbRepostsRow, sparseIntArray);', 1, 1),
+        ])
+        if c_new and p_new:
+            write(cha2, c_new); write(pfa_path, p_new); features["repost"] = True
+            print("ok: reposts: menu item in ChatActivity + 'Репосты' row in ProfileActivity")
+        else:
+            print("WARN: repost feature skipped:", e1 or e2)
+            show(cha2, [r'OPTION_COPY_LINK\)', r'case OPTION_FORWARD:'])
+            show(pfa_path, [r'reportRow'])
 
 # ---- always: second launcher icon "AHbsolute ⚙" (opens AHbsoluteStandaloneActivity: avatar shape, etc.) ----
 def patch_manifest():

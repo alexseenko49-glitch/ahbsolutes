@@ -28,8 +28,8 @@ import static org.telegram.messenger.ahbsolute.AHbsolute.t;
  */
 public class AHbsoluteThemes {
 
-    private static final String[] IDS = {"vice", "chess", "absolut", "teg"};
-    private static final String[] NAMES = {"Vice", "Chess", "Absolut", "Teg"};
+    private static final String[] IDS = {"vice", "chess", "absolut", "teg", "design1", "design1n"};
+    private static final String[] NAMES = {"Vice", "Chess", "Absolut", "Teg", "Absolute Design 1", "Absolute Design 1 Night"};
     // dark, bg, bgGray, text, hint, accent, bar, bubbleIn, bubbleOut, textOut, link
     private static final long[][] P = {
         // vice: deep blue -> magenta
@@ -40,6 +40,10 @@ public class AHbsoluteThemes {
         {0, 0xFFF5E6F3L, 0xFFE8CCE3L, 0xFF2B1029L, 0xFF7A5575L, 0xFF8E4B88L, 0xFFA8689FL, 0xFFF7E9F5L, 0xFFD9A5D2L, 0xFF2B1029L, 0xFF6A2F65L},
         // teg: dark slate
         {1, 0xFF1B242EL, 0xFF121A22L, 0xFFE6EDF3L, 0xFF7F8E9CL, 0xFF3A86C8L, 0xFF121A22L, 0xFF263340L, 0xFF2E5C86L, 0xFFFFFFFFL, 0xFF6DB3F2L},
+        // Absolute Design 1: clean grouped light, violet accent
+        {0, 0xFFFFFFFFL, 0xFFF2F1F7L, 0xFF111018L, 0xFF8B8A96L, 0xFF6D4AFFL, 0xFF6D4AFFL, 0xFFFFFFFFL, 0xFFE9E3FFL, 0xFF16112EL, 0xFF5B37F0L},
+        // Absolute Design 1 Night: near-black, glowing violet
+        {1, 0xFF16151CL, 0xFF0C0B10L, 0xFFF3F2F8L, 0xFF8F8D9CL, 0xFFA48BFFL, 0xFF16151CL, 0xFF221F2BL, 0xFF6444E8L, 0xFFFFFFFFL, 0xFFBBA8FFL},
     };
 
     private static SharedPreferences prefs(Context c) { return c.getSharedPreferences("ahb_theme_ui", Context.MODE_PRIVATE); }
@@ -275,6 +279,12 @@ public class AHbsoluteThemes {
             AHbsoluteUi.diag("d_theme", "error: " + r.getClass().getSimpleName() + ": " + r.getMessage());
             return r.getClass().getSimpleName() + ": " + r.getMessage();
         }
+    }
+
+    /** index of a theme id, -1 if unknown */
+    public static int indexOf(String id) {
+        for (int i = 0; i < IDS.length; i++) if (IDS[i].equals(id)) return i;
+        return -1;
     }
 
     public static String selectedId(Context c) {
