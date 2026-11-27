@@ -32,6 +32,7 @@ public class AHbsoluteBlur {
     /** called from RecyclerListView constructors (patch "blur") */
     public static void attach(final RecyclerView rv) {
         try { if (rv != null) AHbsoluteUi.init(rv.getContext()); } catch (Throwable ignored) { }
+        try { AHbsoluteChats.attach(rv); } catch (Throwable ignored) { }
         try {
             if (rv != null) rv.addOnItemTouchListener(new RecyclerView.OnItemTouchListener() {
                 @Override public boolean onInterceptTouchEvent(RecyclerView v, android.view.MotionEvent e) {

@@ -24,7 +24,7 @@ import org.telegram.messenger.UserConfig;
  */
 public class AHbsoluteProfile {
 
-    public static final int POS_CENTER = 0, POS_LEFT = 1, POS_RIGHT = 2;
+    public static final int POS_CENTER = 0, POS_LEFT = 1, POS_RIGHT = 2, POS_FOLLOW = 3, POS_BESIDE = 4;
 
     /* ------------------------------------------------------------ settings ------------------------------------------------------------ */
 
@@ -38,7 +38,18 @@ public class AHbsoluteProfile {
     public static int wallpaperBlur() { return AHbsoluteUi.getInt("prof_wp_blur", 1); }
     public static int wallpaperDim() { return AHbsoluteUi.getInt("prof_wp_dim", 0); }
     public static int avatarPos() { return AHbsoluteUi.getInt("prof_av_pos", POS_CENTER); }
-    public static int nameAlign() { return AHbsoluteUi.getInt("prof_name_align", POS_CENTER); }
+    /** stored value; the default follows the avatar */
+    public static int nameAlign() { return AHbsoluteUi.getInt("prof_name_align", POS_FOLLOW); }
+    /** where the name really goes: FOLLOW = same side as the avatar */
+    static int effectiveNameAlign() {
+        int al = nameAlign();
+        return al == POS_FOLLOW ? avatarPos() : al;
+    }
+    /** avatar side; "name beside the avatar" with a centred avatar puts the avatar on the left */
+    static int effectiveAvatarPos() {
+        int p = avatarPos();
+        return p == POS_CENTER && nameAlign() == POS_BESIDE ? POS_LEFT : p;
+    }
     public static int avatarSize() { return AHbsoluteUi.getInt("prof_av_size", 100); }
     public static int nameSize() { return AHbsoluteUi.getInt("prof_name_size", 100); }
     public static boolean everywhere() { return "all".equals(AHbsoluteUi.getStr("prof_scope", "me")); }
@@ -63,7 +74,7 @@ public class AHbsoluteProfile {
     public static float avatarX(float width, float avatarW, long userId, long chatId) {
         float centered = width / 2f - avatarW / 2f;
         try {
-            int pos = avatarPos();
+            int pos = effectiveAvatarPos();
             if (pos == POS_CENTER || width <= 0 || !appliesTo(userId, chatId)) return centered;
             // the avatar fills the screen when the profile is pulled down: then it must stay centred
             float t = avatarW <= width * 0.45f ? 1f : clamp01((width * 0.75f - avatarW) / (width * 0.30f));
@@ -72,15 +83,36 @@ public class AHbsoluteProfile {
         } catch (Throwable e) { return centered; }
     }
 
-    /** name / status x: centred value from Telegram, blended to the chosen alignment by the header progress */
+    /** name / status x: centred value from Telegram, moved to the chosen side / next to the avatar by the header progress */
     public static float textX(float centered, float viewportWidth, float leftMargin, float textW, float diff, long userId, long chatId) {
+        return textX(centered, viewportWidth, leftMargin, textW, diff, Float.NaN, 0, userId, chatId);
+    }
+
+    public static float textX(float centered, float viewportWidth, float leftMargin, float textW, float diff, float avX, float avW, long userId, long chatId) {
         try {
+            if (viewportWidth <= 0 || !appliesTo(userId, chatId)) return centered;
             int al = nameAlign();
-            if (al == POS_CENTER || viewportWidth <= 0 || !appliesTo(userId, chatId)) return centered;
-            float target = al == POS_LEFT ? AndroidUtilities.dp(24) - leftMargin : viewportWidth - AndroidUtilities.dp(24) - leftMargin - textW;
-            float t = clamp01(diff);
-            return centered + (target - centered) * t;
+            float target;
+            if (al == POS_BESIDE && !Float.isNaN(avX)) {
+                boolean right = effectiveAvatarPos() == POS_RIGHT;
+                target = right ? avX - AndroidUtilities.dp(16) - leftMargin - textW : avX + avW + AndroidUtilities.dp(16) - leftMargin;
+            } else {
+                al = effectiveNameAlign();
+                if (al == POS_BESIDE) al = effectiveAvatarPos();
+                if (al == POS_CENTER) return centered;
+                target = al == POS_LEFT ? AndroidUtilities.dp(24) - leftMargin : viewportWidth - AndroidUtilities.dp(24) - leftMargin - textW;
+            }
+            return centered + (target - centered) * clamp01(diff);
         } catch (Throwable e) { return centered; }
+    }
+
+    /** vertical shift of name and status for "beside the avatar": centred on the avatar instead of below it */
+    public static float besideShift(float avatarTop, float avatarH, float nameY, float diff, long userId, long chatId) {
+        try {
+            if (nameAlign() != POS_BESIDE || !appliesTo(userId, chatId)) return 0;
+            float target = avatarTop + avatarH / 2f - AndroidUtilities.dp(22);
+            return (target - nameY) * clamp01(diff);
+        } catch (Throwable e) { return 0; }
     }
 
     /** multiplier for the avatar size in the normal (not pulled down) header */
@@ -154,6 +186,21 @@ public class AHbsoluteProfile {
         try { return resolve(wallpaper()) != null && appliesTo(userId, chatId); } catch (Throwable e) { return false; }
     }
 
+    private static final java.util.WeakHashMap<View, Boolean> wallLists = new java.util.WeakHashMap<>();
+
+    /** SharedMediaLayout.MediaPage: no grey page background inside a profile that shows a wallpaper (Posts, Archive, Media…) */
+    public static boolean transparentPage(View page) {
+        try {
+            if (wallLists.isEmpty()) return false;
+            Object p = page.getParent();
+            for (int i = 0; i < 14 && p instanceof View; i++) {
+                if (wallLists.containsKey(p)) return true;
+                p = ((View) p).getParent();
+            }
+        } catch (Throwable ignored) { }
+        return false;
+    }
+
     /** ProfileActivity.createView(): turns the list into glass sections when enabled */
     public static void setupList(Object listView, long userId, long chatId) {
         try {
@@ -162,6 +209,7 @@ public class AHbsoluteProfile {
             if (!glass && !wp) return;
             View v = (View) listView;
             v.setBackgroundColor(Color.TRANSPARENT);
+            if (wp) wallLists.put(v, Boolean.TRUE);
             if (glass) {
                 java.lang.reflect.Method m = listView.getClass().getMethod("setLegacySections", boolean.class);
                 m.invoke(listView, true);

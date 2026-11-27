@@ -19,10 +19,11 @@ import static org.telegram.messenger.ahbsolute.AHbsolute.t;
  */
 public class AHbsoluteDesign {
 
-    private static final String[] UI_KEYS = {"master", "glass", "topbar", "anim", "wp"};
+    private static final String[] UI_KEYS = {"master", "glass", "topbar", "anim", "wp", "msgglass", "chatcards", "mainwall"};
     private static final String[][] STR_KEYS = {
             {"banner", AHbsoluteBanner.OFF}, {"banner_pos", "50"}, {"banner_fade", "40"}, {"banner_dim", "15"}, {"banner_op", "100"},
             {"prof_wp", AHbsoluteBanner.OFF}, {"prof_glass", "0"}, {"prof_glass_op", "62"}, {"prof_wp_blur", "1"}, {"prof_wp_dim", "0"},
+            {"chat_gap", "0"}, {"chat_radius", "18"}, {"msgglass_op", "62"},
     };
 
     private static SharedPreferences sp(Context c) { return c.getApplicationContext().getSharedPreferences("ahb_design", Context.MODE_PRIVATE); }
@@ -32,8 +33,8 @@ public class AHbsoluteDesign {
     public static String title() { return "Absolute Design 1"; }
 
     public static String subtitle() {
-        return t("Новый интерфейс AHbsolute: фирменная тема, стеклянный профиль с обоями, стеклянная панель и плавные анимации. Все функции Telegram и AHbsolute на месте.",
-                "The new AHbsolute interface: signature theme, glass profile with wallpaper, glass panel and smooth animations. Every Telegram and AHbsolute feature stays.");
+        return t("Новый интерфейс AHbsolute: чаты-карточки из стекла поверх фирменных обоев, градиентный заголовок, сообщения Liquid Glass, стеклянный профиль и плавные анимации. Все функции Telegram и AHbsolute на месте.",
+                "The new AHbsolute interface: glass chat cards over the signature wallpaper, gradient title, Liquid Glass messages, glass profile and smooth animations. Every Telegram and AHbsolute feature stays.");
     }
 
     /** returns null on success, otherwise an error text */
@@ -65,6 +66,10 @@ public class AHbsoluteDesign {
                 AHbsoluteUi.putStr("banner_fade", "0");
                 AHbsoluteUi.putStr("banner_dim", night ? "10" : "0");
                 AHbsoluteUi.putStr("banner_op", "100");
+                // main screen: floating glass chat cards over the design wallpaper, a little air between them
+                AHbsoluteUi.putStr("chat_gap", "6");
+                AHbsoluteUi.putStr("chat_radius", "20");
+                AHbsoluteUi.putStr("msgglass_op", night ? "58" : "66");
             } else {
                 JSONObject b = new JSONObject(sp(c).getString("backup", "{}"));
                 Iterator<String> it = b.keys();

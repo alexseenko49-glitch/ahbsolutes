@@ -5,7 +5,7 @@ Required patches fail loudly (exit 1) so CI never silently builds something half
 import os, re, sys, json
 
 SAFE = "--safe" in sys.argv
-FEATS = {"menu", "avatar", "settings", "title", "streak", "blur", "splash", "anim", "profile", "edit", "pwall", "playout", "repost"}
+FEATS = {"menu", "avatar", "settings", "title", "streak", "blur", "splash", "anim", "profile", "edit", "pwall", "playout", "repost", "main", "msgglass"}
 for _a in sys.argv[1:]:
     if _a.startswith("--features="):
         FEATS = {x.strip() for x in _a.split("=", 1)[1].split(",") if x.strip()}
@@ -575,7 +575,7 @@ def subs_all(path, rules):
     return t, None
 
 AHP = "org.telegram.messenger.ahbsolute.AHbsoluteProfile"
-pfa_path = one("ProfileActivity.java") if ({"pwall", "playout", "repost"} & FEATS) else None
+pfa_path = one("ProfileActivity.java") if ({"pwall", "playout", "repost", "main", "msgglass"} & FEATS) else None
 
 # ---- group "pwall": own picture as profile wallpaper + glass profile (ProfileActivity + RecyclerListView) ----
 if "pwall" in FEATS:
@@ -593,7 +593,18 @@ if "pwall" in FEATS:
              r'\1\n        ' + AHP + r'.setupList(listView, userId, chatId);', 1, 1),
             (r'(\n(\s*)super\.dispatchDraw\(canvas\);\s*/\*\s*if \(profileTransitionInProgress)',
              lambda m: '\n' + m.group(2) + AHP + '.drawWallpaper(canvas, this, userId, chatId);' + m.group(1), 1, 1),
+            # the header lets the wallpaper through (banner + wallpaper read as one picture)
+            (r'(topView\.setBackgroundColor\(getThemedColor\(Theme\.key_windowBackgroundGray\)\);)',
+             r'\1 if (' + AHP + r'.wallpaperFor(userId, chatId)) topView.setBackgroundColor(0);', 1, 0),
         ])
+        smlp = one("SharedMediaLayout.java")
+        if r_new and p_new and smlp:
+            s_new, e3 = subs_all(smlp, [
+                # Posts / Archive / Media pages: no grey page background over the profile wallpaper
+                (r'\}\s*else\s+if\s*\(drawPageBackground\)\s*\{', '} else if (drawPageBackground && !' + AHP + '.transparentPage(this)) {', 1, 1),
+            ])
+            if s_new: write(smlp, s_new)
+            else: print("WARN: pwall: media pages keep their background:", e3)
         if r_new and p_new:
             write(rlv2, r_new); write(pfa_path, p_new); features["pwall"] = True
             print("ok: profile wallpaper + glass profile hooked (ProfileActivity + RecyclerListView)")
@@ -611,9 +622,14 @@ if "playout" in FEATS:
             (r'avatarX = listView\.getMeasuredWidth\(\) / 2f - \(params\.width \* avatarScale \* 0\.5f\);',
              'avatarX = ' + AHP + '.avatarX(listView.getMeasuredWidth(), params.width * avatarScale, userId, chatId);', 1, 1),
             (r'float nameX = viewportWidth / 2f - \(params1\.leftMargin \+ (Math\.min\(nameTextView\.getExactWidth\(\), params1\.width\) \* nameScale) \* 0\.5f\);',
-             lambda m: 'float nameX = ' + AHP + '.textX(viewportWidth / 2f - (params1.leftMargin + ' + m.group(1) + ' * 0.5f), viewportWidth, params1.leftMargin, ' + m.group(1) + ', diff, userId, chatId);', 1, 1),
+             lambda m: 'float nameX = ' + AHP + '.textX(viewportWidth / 2f - (params1.leftMargin + ' + m.group(1) + ' * 0.5f), viewportWidth, params1.leftMargin, ' + m.group(1) + ', diff, avatarX, avatarContainer.getMeasuredWidth() * avatarScale, userId, chatId);', 1, 1),
             (r'float onlineX = viewportWidth / 2f - \(params2\.leftMargin \+ onlinePadding \+ (Math\.min\(onlineTextView\.getExactWidth\(\), onlineMaxWidth\)) \* 0\.5f\);',
-             lambda m: 'float onlineX = ' + AHP + '.textX(viewportWidth / 2f - (params2.leftMargin + onlinePadding + ' + m.group(1) + ' * 0.5f), viewportWidth, params2.leftMargin + onlinePadding, ' + m.group(1) + ', diff, userId, chatId);', 1, 1),
+             lambda m: 'float onlineX = ' + AHP + '.textX(viewportWidth / 2f - (params2.leftMargin + onlinePadding + ' + m.group(1) + ' * 0.5f), viewportWidth, params2.leftMargin + onlinePadding, ' + m.group(1) + ', diff, avatarX, avatarContainer.getMeasuredWidth() * avatarScale, userId, chatId);', 1, 1),
+            # name + status next to the avatar: centred on it vertically (main layout pass and the expand helper)
+            (r'(\n(\s*)onlineY = avatarBottom \+ dp\(24\) \+ \(float\) Math\.floor\(11 \* AndroidUtilities\.density\) \* diff;)',
+             lambda m: m.group(1) + '\n' + m.group(2) + '{ float ahbS = ' + AHP + '.besideShift((float) Math.floor(endNameY), avatarContainer.getHeight() * avatarContainer.getScaleY(), nameY, diff, userId, chatId); nameY += ahbS; onlineY += ahbS; }', 1, 1),
+            (r'(\n(\s*)onlineY = avatarBottom \+ AndroidUtilities\.dp\(24\) \+ \(float\) Math\.floor\(11 \* AndroidUtilities\.density\) \* diff;)',
+             lambda m: m.group(1) + '\n' + m.group(2) + '{ float ahbS = ' + AHP + '.besideShift((float) Math.floor(endNameY), AndroidUtilities.dp(42) * scale, nameY, diff, userId, chatId); nameY += ahbS; onlineY += ahbS; }', 0, 1),
             (r'avatarScale = lerp\(intoSize, 96, diff\) / 100f;',
              'avatarScale = lerp(intoSize, 96f * ' + AHP + '.sizeK(userId, chatId), diff) / 100f;', 1, 1),
             (r'(final float nameScale = openAnimationInProgress \? AndroidUtilities\.lerp\(getPreviousHeaderTextScale\(PREVIOUS_HEADER_TITLE\), 1\.12f, diff\) : )1\.0f \+ 0\.12f \* diff;',
@@ -664,6 +680,55 @@ if "repost" in FEATS:
             print("WARN: repost feature skipped:", e1 or e2)
             show(cha2, [r'OPTION_COPY_LINK\)', r'case OPTION_FORWARD:'])
             show(pfa_path, [r'reportRow'])
+
+# ---- group "main": "AHbsolute" title instead of the Telegram logo + chat list spacing / cards (DialogsActivity, RecyclerListView) ----
+if "main" in FEATS:
+    dca2 = one("DialogsActivity.java")
+    rlv3 = one("RecyclerListView.java")
+    if not (dca2 and rlv3):
+        print("WARN: main feature skipped: DialogsActivity.java / RecyclerListView.java not found")
+    else:
+        d_new, e1 = subs_all(dca2, [
+            (r'ssb\.setSpan\(new ImageSpan\(logoDrawable\), 0, ssb\.length\(\), Spanned\.SPAN_EXCLUSIVE_EXCLUSIVE\);',
+             'org.telegram.messenger.ahbsolute.AHbsoluteChats.styleTitle(ssb);', 1, 1),
+        ])
+        r_txt = read(rlv3)
+        r_new = r_txt
+        if "AHbsoluteBlur.attach(this)" not in r_txt and "AHbsoluteChats.attach(this)" not in r_txt:
+            r_new, n = re.subn(r'(public\s+RecyclerListView\s*\([^)]*\)\s*\{\s*super\s*\([^;]*\)\s*;)',
+                               r'\1\n        org.telegram.messenger.ahbsolute.AHbsoluteChats.attach(this);', r_txt)
+            if n == 0: r_new = None
+        if d_new and r_new:
+            write(dca2, d_new); write(rlv3, r_new); features["main"] = True
+            print("ok: main screen: 'AHbsolute' title + chat spacing / cards")
+        else:
+            print("WARN: main feature skipped:", e1 or "RecyclerListView constructor not found")
+            show(dca2, [r'ImageSpan\(logoDrawable\)'])
+
+# ---- group "msgglass": Liquid Glass message bubbles (MessageDrawable) ----
+if "msgglass" in FEATS:
+    mdp = one("MessageDrawable.java")
+    if not mdp:
+        print("WARN: msgglass feature skipped: MessageDrawable.java not found")
+    else:
+        AHG = "org.telegram.messenger.ahbsolute.AHbsoluteGlass"
+        m_new, e = subs_all(mdp, [
+            # the cached bitmap shortcut would skip the glass: draw the path instead while glass is on
+            (r'if \(paintToUse == null && paint\.getStyle\(\) == Paint\.Style\.FILL && gradientShader == null && overrideRoundRadius == 0 && overrideRounding <= 0\) \{',
+             'if (paintToUse == null && paint.getStyle() == Paint.Style.FILL && gradientShader == null && overrideRoundRadius == 0 && overrideRounding <= 0 && !' + AHG + '.on()) {', 1, 1),
+            (r'(generatePath\(path, bounds, padding, rad, smallRad, nearRad, top, drawFullBottom, drawFullTop, paintToUse != null\);\s*\}\s*)canvas\.drawPath\(path, p\);',
+             lambda m: m.group(1) + 'final boolean ahbGlass = paintToUse == null && ' + AHG + '.on();\n'
+                       '        final int ahbAlpha = p.getAlpha();\n'
+                       '        if (ahbGlass) p.setAlpha((int) (ahbAlpha * ' + AHG + '.bodyAlpha()));\n'
+                       '        canvas.drawPath(path, p);\n'
+                       '        if (ahbGlass) { p.setAlpha(ahbAlpha); ' + AHG + '.drawBubble(canvas, path, bounds, isOut); }', 1, 1),
+        ])
+        if m_new:
+            write(mdp, m_new); features["msgglass"] = True
+            print("ok: Liquid Glass message bubbles hooked into MessageDrawable")
+        else:
+            print("WARN: msgglass feature skipped:", e)
+            show(mdp, [r'canvas\.drawPath\(path, p\)', r'paint\.getStyle\(\) == Paint\.Style\.FILL'])
 
 # ---- always: second launcher icon "AHbsolute ⚙" (opens AHbsoluteStandaloneActivity: avatar shape, etc.) ----
 def patch_manifest():

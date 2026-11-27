@@ -62,7 +62,7 @@ public class AHbsoluteBanner {
     public static void setMode(String m) { AHbsoluteUi.putStr("banner", m); }
     public static int brightness() { return AHbsoluteUi.getInt("banner_op", 100); }
     public static int darken() { return AHbsoluteUi.getInt("banner_dim", 15); }
-    public static int fade() { return AHbsoluteUi.getInt("banner_fade", 40); }
+    public static int fade() { return AHbsoluteUi.getInt("banner_fade", 70); }
     /** 0 = top, 50 = centre, 100 = bottom */
     public static int position() { return AHbsoluteUi.getInt("banner_pos", 50); }
     public static boolean everywhere() { return "all".equals(AHbsoluteUi.getStr("banner_scope", "me")); }
@@ -197,6 +197,8 @@ public class AHbsoluteBanner {
     /** share of the header colour that stays visible: 1 = normal, 0 = fully transparent (only where a banner is shown) */
     public static float headerAlpha(long userId, long chatId) {
         try {
+            // a profile wallpaper shows through the header: header and page become one picture
+            if (AHbsoluteProfile.wallpaperFor(userId, chatId)) return 0f;
             if (resolve(mode()) == null || !visibleFor(userId, chatId)) return 1f;
             return AHbsoluteUi.profileHeaderAlpha();
         } catch (Throwable e) { return 1f; }
@@ -208,11 +210,24 @@ public class AHbsoluteBanner {
     public static void draw(Canvas canvas, int w, int h, long userId, long chatId) {
         try {
             Context c = AHbsoluteUi.ctx();
-            if (c == null || w <= 0 || h <= 0 || !AHbsoluteUi.master(c) || !visibleFor(userId, chatId)) return;
-            Bitmap b = current(c);
-            if (b == null) return;
-            drawBitmap(canvas, b, w, h);
+            if (c == null || w <= 0 || h <= 0 || !AHbsoluteUi.master(c)) return;
+            boolean wall = AHbsoluteProfile.wallpaperFor(userId, chatId);
+            Bitmap b = visibleFor(userId, chatId) ? current(c) : null;
+            if (b != null) drawBitmap(canvas, b, w, h, wall);
+            if (wall) drawScrim(canvas, w, h);
         } catch (Throwable ignored) { }
+    }
+
+    private static final Paint scrim = new Paint();
+    private static int scrimH = -1;
+
+    /** soft shade at the top of a see-through header so the white name and the buttons stay readable on any picture */
+    private static void drawScrim(Canvas canvas, int w, int h) {
+        if (scrimH != h) {
+            scrim.setShader(new LinearGradient(0, 0, 0, h, new int[]{0x59000000, 0x26000000, 0x00000000}, new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
+            scrimH = h;
+        }
+        canvas.drawRect(0, 0, w, h, scrim);
     }
 
     /** old hook signature (shows the banner on every profile) */
@@ -221,7 +236,7 @@ public class AHbsoluteBanner {
             Context c = AHbsoluteUi.ctx();
             if (c == null || w <= 0 || h <= 0 || !AHbsoluteUi.master(c)) return;
             Bitmap b = current(c);
-            if (b != null) drawBitmap(canvas, b, w, h);
+            if (b != null) drawBitmap(canvas, b, w, h, false);
         } catch (Throwable ignored) { }
     }
 
@@ -230,14 +245,15 @@ public class AHbsoluteBanner {
         try {
             Bitmap b = current(c);
             if (b == null) return false;
-            drawBitmap(canvas, b, w, h);
+            drawBitmap(canvas, b, w, h, !AHbsoluteBanner.OFF.equals(AHbsoluteProfile.wallpaper()));
             return true;
         } catch (Throwable e) { return false; }
     }
 
-    private static void drawBitmap(Canvas canvas, Bitmap b, int w, int h) {
+    private static void drawBitmap(Canvas canvas, Bitmap b, int w, int h, boolean intoWallpaper) {
         int top = Math.round(255 * Math.max(0, Math.min(100, brightness())) / 100f);
-        int bottom = Math.round(top * (1f - Math.max(0, Math.min(100, fade())) / 100f));
+        // over a profile wallpaper the banner always melts away completely at the bottom
+        int bottom = intoWallpaper ? 0 : Math.round(top * (1f - Math.max(0, Math.min(100, fade())) / 100f));
         // centre-crop of the picture to w:h, vertical position chosen by the user
         float sr = (float) w / h, br = (float) b.getWidth() / b.getHeight();
         if (br > sr) {
@@ -258,7 +274,9 @@ public class AHbsoluteBanner {
         }
         long key = top * 1000L + bottom;
         if (maskH != h || maskKey != key) {
-            mask.setShader(new LinearGradient(0, 0, 0, h, top << 24, bottom << 24, Shader.TileMode.CLAMP));
+            // fully visible in the upper part, then a long smooth fade towards the bottom
+            int mid = Math.round(top * 0.92f + bottom * 0.08f);
+            mask.setShader(new LinearGradient(0, 0, 0, h, new int[]{top << 24, mid << 24, bottom << 24}, new float[]{0f, 0.42f, 1f}, Shader.TileMode.CLAMP));
             maskH = h;
             maskKey = key;
         }

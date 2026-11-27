@@ -270,14 +270,19 @@ public class AHbsoluteSettingsUi {
             int headColor;
             try { headColor = Theme.getColor(Theme.key_avatar_backgroundActionBarBlue); } catch (Throwable e) { headColor = 0xFF5B95C2; }
             float ha = 1f;
-            try { ha = AHbsoluteUi.profileHeaderAlpha(); } catch (Throwable ignored) { }
+            try { ha = wall ? 0f : AHbsoluteUi.profileHeaderAlpha(); } catch (Throwable ignored) { }
             bg.setColor(headColor);
             bg.setAlpha(Math.round(255 * ha));
             canvas.drawRect(0, 0, w, head, bg);
             if (!AHbsoluteBanner.OFF.equals(AHbsoluteBanner.mode())) AHbsoluteBanner.drawPreview(c, canvas, w, head);
+            if (wall) {
+                bg.setShader(new LinearGradient(0, 0, 0, head, new int[]{0x59000000, 0x26000000, 0}, new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP));
+                canvas.drawRect(0, 0, w, head, bg);
+                bg.setShader(null);
+            }
             // avatar
             float size = dp(72) * Math.max(60, Math.min(140, AHbsoluteProfile.avatarSize())) / 100f;
-            int pos = AHbsoluteProfile.avatarPos();
+            int pos = AHbsoluteProfile.effectiveAvatarPos();
             float ax = pos == AHbsoluteProfile.POS_LEFT ? dp(24) : pos == AHbsoluteProfile.POS_RIGHT ? w - size - dp(24) : (w - size) / 2f;
             float ay = dp(22);
             av.setShader(new LinearGradient(ax, ay, ax + size, ay + size, 0xFFB79CFF, 0xFF6D4AFF, Shader.TileMode.CLAMP));
@@ -285,15 +290,18 @@ public class AHbsoluteSettingsUi {
             canvas.translate(ax, ay);
             canvas.drawPath(AHbsolute.cachedPath(AHbsolute.getMyShape(), size, size), av);
             canvas.restore();
-            // name + status
-            int al = AHbsoluteProfile.nameAlign();
+            // name + status: with the avatar / next to it / fixed side
+            boolean beside = AHbsoluteProfile.nameAlign() == AHbsoluteProfile.POS_BESIDE;
+            int al = beside ? (pos == AHbsoluteProfile.POS_RIGHT ? AHbsoluteProfile.POS_RIGHT : AHbsoluteProfile.POS_LEFT) : AHbsoluteProfile.effectiveNameAlign();
             Paint.Align align = al == AHbsoluteProfile.POS_LEFT ? Paint.Align.LEFT : al == AHbsoluteProfile.POS_RIGHT ? Paint.Align.RIGHT : Paint.Align.CENTER;
-            float tx = al == AHbsoluteProfile.POS_LEFT ? dp(24) : al == AHbsoluteProfile.POS_RIGHT ? w - dp(24) : w / 2f;
+            float tx;
+            if (beside) tx = pos == AHbsoluteProfile.POS_RIGHT ? ax - dp(16) : ax + size + dp(16);
+            else tx = al == AHbsoluteProfile.POS_LEFT ? dp(24) : al == AHbsoluteProfile.POS_RIGHT ? w - dp(24) : w / 2f;
             name.setTextAlign(align);
             status.setTextAlign(align);
             name.setColor(Color.WHITE);
             name.setTextSize(dp(19) * Math.max(80, Math.min(130, AHbsoluteProfile.nameSize())) / 100f);
-            float ny = ay + size + dp(30);
+            float ny = beside ? ay + size / 2f - dp(2) : ay + size + dp(30);
             canvas.drawText(t("Вы", "You"), tx, ny, name);
             status.setColor(0xCCFFFFFF);
             status.setTextSize(dp(13));
@@ -402,7 +410,8 @@ public class AHbsoluteSettingsUi {
         String[] posNames = {t("По центру", "Center"), t("Слева", "Left"), t("Справа", "Right")};
         choice(c, list, t("Аватар", "Avatar"), "prof_av_pos", pct(0, 1, 2), posNames, "0", true, host);
         choice(c, list, t("Размер аватара", "Avatar size"), "prof_av_size", pct(80, 90, 100, 115, 130), pctNames(null, 80, 90, 100, 115, 130), "100", true, host);
-        choice(c, list, t("Имя и статус", "Name and status"), "prof_name_align", pct(0, 1, 2), posNames, "0", true, host);
+        choice(c, list, t("Имя и «в сети»", "Name and status"), "prof_name_align", pct(3, 4, 0, 1, 2),
+                new String[]{t("Вместе с аватаром", "With the avatar"), t("Рядом с аватаром", "Next to the avatar"), t("По центру", "Center"), t("Слева", "Left"), t("Справа", "Right")}, "3", true, host);
         choice(c, list, t("Размер имени", "Name size"), "prof_name_size", pct(90, 100, 115, 125), pctNames(null, 90, 100, 115, 125), "100", true, host);
         choice(c, list, t("Прозрачность шапки", "Header transparency"), "prof_alpha", pct(100, 75, 50, 25, 0),
                 new String[]{t("Обычная", "Normal"), "75%", "50%", "25%", t("Прозрачная", "Transparent")}, "100", true, host);
@@ -410,6 +419,31 @@ public class AHbsoluteSettingsUi {
                 () -> { AHbsoluteProfile.setEverywhere(!AHbsoluteProfile.everywhere()); host.rebuild(); });
         info(c, list, t("Обои, стекло и расположение аватара видите вы в AHbsolute. Выключено «Во всех профилях» — меняется только ваш профиль.",
                 "Wallpaper, glass and avatar layout are shown in your AHbsolute. With \"On every profile\" off only your own profile changes."));
+
+        // ---------- main screen ----------
+        header(c, list, t("Главный экран", "Main screen"));
+        choice(c, list, t("Расстояние между чатами", "Space between chats"), "chat_gap", pct(0, 2, 4, 6, 8, 12, 16),
+                new String[]{t("Как в Telegram", "Like Telegram"), "2 dp", "4 dp", "6 dp", "8 dp", "12 dp", "16 dp"}, "0", true, host);
+        check(c, list, t("Чаты карточками", "Chats as cards"), AHbsoluteUi.getBool("chatcards"), true,
+                () -> { AHbsoluteUi.toggle(c, "chatcards"); host.rebuild(); });
+        if (AHbsoluteUi.getBool("chatcards")) {
+            choice(c, list, t("Скругление карточек", "Card corners"), "chat_radius", pct(10, 14, 18, 20, 24),
+                    new String[]{"10 dp", "14 dp", "18 dp", "20 dp", "24 dp"}, "18", true, host);
+        }
+        check(c, list, t("Обои за чатами (стекло)", "Wallpaper behind chats (glass)"), AHbsoluteUi.getBool("mainwall"), false,
+                () -> { AHbsoluteUi.toggle(c, "mainwall"); host.rebuild(); });
+        info(c, list, t("Обои за чатами берутся из «Обоев профиля». С ними карточки чатов становятся стеклянными. Изменения видны при следующем открытии списка чатов.",
+                "The wallpaper behind the chats is the \"Profile wallpaper\". With it the chat cards turn into glass. Changes show the next time the chat list is opened."));
+
+        // ---------- messages ----------
+        header(c, list, t("Сообщения", "Messages"));
+        check(c, list, "Liquid Glass", AHbsoluteUi.getBool("msgglass"), AHbsoluteUi.getBool("msgglass"),
+                () -> { AHbsoluteUi.toggle(c, "msgglass"); host.rebuild(); });
+        if (AHbsoluteUi.getBool("msgglass")) {
+            choice(c, list, t("Плотность стекла", "Glass density"), "msgglass_op", pct(40, 52, 62, 72, 85), pctNames(null, 40, 52, 62, 72, 85), "62", false, host);
+        }
+        info(c, list, t("Сообщения становятся каплями стекла: полупрозрачные, с бликом сверху и светлой кромкой, сквозь них видны обои чата.",
+                "Messages become drops of glass: translucent, with a highlight on top and a light rim; the chat wallpaper shows through."));
 
         // ---------- banner ----------
         header(c, list, t("Баннер профиля", "Profile banner"));

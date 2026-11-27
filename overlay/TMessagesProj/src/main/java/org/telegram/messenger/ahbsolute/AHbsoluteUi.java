@@ -53,7 +53,10 @@ public class AHbsoluteUi {
     public static boolean wallpaper(Context c) { return master(c) && sp(c).getBoolean("wp", true); }
     public static boolean shake(Context c) { return master(c) && sp(c).getBoolean("shake", true); }
     public static boolean topbar(Context c) { return master(c) && sp(c).getBoolean("topbar", false); }
-    private static boolean raw(Context c, String k) { return sp(c).getBoolean(k, !k.equals("topbar")); }
+    private static boolean raw(Context c, String k) {
+        boolean def = !(k.equals("topbar") || k.equals("msgglass") || k.equals("chatcards") || k.equals("mainwall"));
+        return sp(c).getBoolean(k, def);
+    }
 
     private static Context appCtx;
     public static Context ctx() { return appCtx; }
@@ -176,6 +179,7 @@ public class AHbsoluteUi {
                     try { refreshGlass(a); } catch (Throwable e) { diag("d_engine", "refresh error: " + e); }
                     try { frost(a); } catch (Throwable e) { diag("d_frost", "error: " + e); }
                     try { topBar(a); } catch (Throwable e) { diag("d_topbar", "error: " + e); }
+                    try { AHbsoluteThemes.ensureWallpaper(c); } catch (Throwable ignored) { }
                 }
             }, dl);
         }

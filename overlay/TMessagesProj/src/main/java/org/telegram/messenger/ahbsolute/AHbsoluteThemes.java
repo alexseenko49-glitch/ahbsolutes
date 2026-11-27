@@ -197,14 +197,19 @@ public class AHbsoluteThemes {
             } else {
                 Class<?> al = Class.forName("org.telegram.messenger.ApplicationLoader");
                 File dir = (File) findStaticMethod(al, "getFilesDirFixed", 0).invoke(null);
-                File f = new File(dir, "wallpaper.jpg");
+                // own, unique file name: Telegram deletes the file of the previous override wallpaper when a new one
+                // is set, so reusing Telegram's "wallpaper.jpg" made the fresh picture disappear (wallpaper fell back to default)
+                String name = WP_PREFIX + IDS[i] + "_" + System.currentTimeMillis() + ".jpg";
+                File f = new File(dir, name);
                 try (FileOutputStream o = new FileOutputStream(f)) { o.write(readAsset(c, IDS[i] + ".jpg")); }
                 Class<?> owi = Class.forName("org.telegram.ui.ActionBar.Theme$OverrideWallpaperInfo");
                 java.lang.reflect.Constructor<?> ct = owi.getDeclaredConstructor();
                 ct.setAccessible(true);
                 Object info = ct.newInstance();
-                setField(info, "fileName", "wallpaper.jpg");
-                setField(info, "originalFileName", "wallpaper.jpg");
+                setField(info, "fileName", name);
+                setField(info, "originalFileName", name);
+                setField(info, "slug", "");
+                setField(info, "intensity", 1f);
                 setField(info, "isBlurred", Boolean.FALSE);
                 setField(info, "isMotion", Boolean.FALSE);
                 set.invoke(active, info);
@@ -230,6 +235,49 @@ public class AHbsoluteThemes {
         } catch (Throwable e) {
             Throwable r = e instanceof java.lang.reflect.InvocationTargetException && e.getCause() != null ? e.getCause() : e;
             return "wallpaper error: " + r;
+        }
+    }
+
+    private static final String WP_PREFIX = "ahb_wp_";
+    private static long lastEnsure;
+
+    private static Object field(Object o, String name) {
+        for (Class<?> k = o.getClass(); k != null; k = k.getSuperclass()) {
+            try { java.lang.reflect.Field f = k.getDeclaredField(name); f.setAccessible(true); return f.get(o); } catch (Throwable ignored) { }
+        }
+        return null;
+    }
+
+    /**
+     * Called when a screen of the app resumes: if an AHbsolute theme with "chat wallpaper from theme" is active and the
+     * chat wallpaper got lost (no override or its file is missing), it is put back. A wallpaper the user picked himself
+     * in Telegram (existing file, not ours) is left alone.
+     */
+    public static void ensureWallpaper(Context c) {
+        try {
+            long now = System.currentTimeMillis();
+            if (now - lastEnsure < 4000) return;
+            lastEnsure = now;
+            if (c == null || !AHbsoluteUi.wallpaper(c)) return;
+            int idx = indexOf(selectedId(c));
+            if (idx < 0) return;
+            Class<?> theme = Class.forName("org.telegram.ui.ActionBar.Theme");
+            Method ga = findStaticMethod(theme, "getActiveTheme", 0);
+            Object active = ga == null ? null : ga.invoke(null);
+            if (active == null) return;
+            Object ow = field(active, "overrideWallpaper");
+            boolean lost = ow == null;
+            if (!lost) {
+                Object fn = field(ow, "fileName");
+                String name = fn == null ? "" : fn.toString();
+                Class<?> al = Class.forName("org.telegram.messenger.ApplicationLoader");
+                File dir = (File) findStaticMethod(al, "getFilesDirFixed", 0).invoke(null);
+                // no picture file (Telegram's default background) or the file is gone
+                lost = name.isEmpty() || !new File(dir, name).exists();
+            }
+            if (lost) AHbsoluteUi.diag("d_theme", "chat wallpaper restored: " + wallpaperOverride(c, idx));
+        } catch (Throwable e) {
+            AHbsoluteUi.diag("d_theme", "ensure error: " + e);
         }
     }
 
