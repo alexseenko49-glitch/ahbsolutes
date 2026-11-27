@@ -68,6 +68,51 @@ public class AHbsoluteUi {
     public static float profileHeaderAlpha() { return appCtx != null && master(appCtx) ? pct("prof_alpha", "100") : 1f; }
     private static int cntDown, cntCell, cntShake;
 
+    /* ---- public access to the settings (used by AHbsoluteSettingsUi / AHbsoluteBanner) ---- */
+    private static Context anyCtx() {
+        if (appCtx == null) {
+            try { appCtx = org.telegram.messenger.ApplicationLoader.applicationContext; } catch (Throwable ignored) { }
+        }
+        return appCtx;
+    }
+    public static boolean getBool(String key) { Context c = anyCtx(); return c != null && raw(c, key); }
+    /** toggles a switch and applies the side effects the old settings rows had */
+    public static void toggle(Context c, String key) {
+        if (appCtx == null) appCtx = c.getApplicationContext();
+        sp(c).edit().putBoolean(key, !raw(c, key)).apply();
+        try { applyGlass(c); } catch (Throwable ignored) { }
+        if (key.equals("wp") || key.equals("master")) {
+            try { AHbsoluteThemes.reapply(c); } catch (Throwable ignored) { }
+        }
+    }
+    public static String getStr(String key, String def) {
+        Context c = anyCtx();
+        if (c == null) return def;
+        try { return sp(c).getString(key, def); } catch (Throwable e) { return def; }
+    }
+    public static void putStr(String key, String v) {
+        Context c = anyCtx();
+        if (c != null) sp(c).edit().putString(key, v).apply();
+    }
+    public static int getInt(String key, int def) {
+        try { return Integer.parseInt(getStr(key, String.valueOf(def)).trim()); } catch (Throwable e) { return def; }
+    }
+    public static void putInt(String key, int v) { putStr(key, String.valueOf(v)); }
+    /** text of the diagnostics block */
+    public static String diagText(Context c) {
+        SharedPreferences d = dg(c);
+        String none = t("— (ещё не запускалось)", "— (has not run yet)");
+        return "init: " + d.getString("d_init", none)
+                + "\ntouch: " + d.getString("d_touch", none)
+                + "\ntaps: " + d.getInt("n_down", 0) + ", on chat rows: " + d.getInt("n_cell", 0) + ", shakes: " + d.getInt("n_shake", 0)
+                + "\nglass: " + d.getString("d_glass", none)
+                + "\nengine: " + d.getString("d_engine", none)
+                + "\nrefresh: " + d.getString("d_refresh", none)
+                + "\nfrost: " + d.getString("d_frost", none)
+                + "\ntopbar: " + d.getString("d_topbar", none)
+                + "\ntheme: " + d.getString("d_theme", none);
+    }
+
     public static void diag(String k, String v) {
         try { if (appCtx != null) dg(appCtx).edit().putString(k, v).apply(); } catch (Throwable ignored) { }
     }

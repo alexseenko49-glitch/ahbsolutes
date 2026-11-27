@@ -1,101 +1,126 @@
 package org.telegram.messenger.ahbsolute;
 
 import android.app.Activity;
-import android.content.Context;
-import android.graphics.Canvas;
-import android.graphics.Paint;
+import android.content.Intent;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
+import android.graphics.Typeface;
+import android.os.Build;
 import android.os.Bundle;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.Window;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
-import static org.telegram.messenger.ahbsolute.AHbsolute.t;
+import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.R;
+import org.telegram.ui.ActionBar.Theme;
 
-/** Second launcher icon "AHbsolute ⚙": opens AHbsolute settings without touching Telegram's own screens. */
-public class AHbsoluteStandaloneActivity extends Activity {
+/**
+ * Second launcher icon "AHbsolute ⚙": the AHbsolute settings (banners, avatar shape, interface, themes)
+ * with Telegram's own action bar colours and list cells, so it looks like a regular Telegram settings page.
+ */
+public class AHbsoluteStandaloneActivity extends Activity implements AHbsoluteSettingsUi.Host {
 
     private LinearLayout content;
-
-    private static class ShapePreview extends View {
-        private final int shape;
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        ShapePreview(Context c, int shape) { super(c); this.shape = shape; paint.setColor(0xFF9B4F96); }
-        @Override protected void onDraw(Canvas canvas) {
-            canvas.drawPath(AHbsolute.cachedPath(shape, getWidth(), getHeight()), paint);
-        }
-    }
-
-    private int dp(float v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
-        setTitle("AHbsolute");
+        try { AHbsoluteUi.init(this); } catch (Throwable ignored) { }
+        try { Theme.createCommonResources(this); } catch (Throwable ignored) { }
+
+        int barColor = safeColor(Theme.key_actionBarDefault, 0xFF527DA3);
+        int barText = safeColor(Theme.key_actionBarDefaultTitle, 0xFFFFFFFF);
+        int barIcon = safeColor(Theme.key_actionBarDefaultIcon, 0xFFFFFFFF);
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(safeColor(Theme.key_windowBackgroundGray, 0xFFF0F0F0));
+
+        // ---- action bar, same metrics as Telegram's ActionBar (56dp, back arrow, 20sp medium title) ----
+        FrameLayout bar = new FrameLayout(this);
+        bar.setBackgroundColor(barColor);
+        ImageView back = new ImageView(this);
+        back.setImageResource(R.drawable.ic_ab_back);
+        back.setScaleType(ImageView.ScaleType.CENTER);
+        back.setColorFilter(new PorterDuffColorFilter(barIcon, PorterDuff.Mode.SRC_IN));
+        try { back.setBackground(Theme.createSelectorDrawable(safeColor(Theme.key_actionBarDefaultSelector, 0x22FFFFFF), 1)); } catch (Throwable ignored) { }
+        back.setOnClickListener(v -> finish());
+        bar.addView(back, new FrameLayout.LayoutParams(AndroidUtilities.dp(54), AndroidUtilities.dp(56), Gravity.LEFT | Gravity.CENTER_VERTICAL));
+        TextView title = new TextView(this);
+        title.setText("AHbsolute");
+        title.setTextColor(barText);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
+        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        title.setGravity(Gravity.CENTER_VERTICAL);
+        FrameLayout.LayoutParams tlp = new FrameLayout.LayoutParams(-2, AndroidUtilities.dp(56), Gravity.LEFT | Gravity.CENTER_VERTICAL);
+        tlp.leftMargin = AndroidUtilities.dp(72);
+        bar.addView(title, tlp);
+        root.addView(bar, new LinearLayout.LayoutParams(-1, AndroidUtilities.dp(56)));
+
         ScrollView sv = new ScrollView(this);
+        sv.setVerticalScrollBarEnabled(false);
         content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        sv.addView(content);
-        setContentView(sv);
+        sv.addView(content, new FrameLayout.LayoutParams(-1, -2));
+        root.addView(sv, new LinearLayout.LayoutParams(-1, 0, 1f));
+        setContentView(root);
+
+        try {
+            Window w = getWindow();
+            w.setStatusBarColor(barColor);
+            boolean light = AndroidUtilities.computePerceivedBrightness(barColor) > 0.721f;
+            if (Build.VERSION.SDK_INT >= 23) {
+                View d = w.getDecorView();
+                int f = d.getSystemUiVisibility();
+                d.setSystemUiVisibility(light ? f | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR : f & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+            }
+        } catch (Throwable ignored) { }
+
         rebuild();
     }
 
-    private TextView text(String s, boolean header, boolean clickable) {
-        TextView tv = new TextView(this);
-        tv.setText(s);
-        tv.setTextSize(header ? 13 : 16);
-        if (header) tv.setTextColor(0xFF9B4F96);
-        tv.setPadding(dp(20), dp(header ? 18 : 14), dp(20), dp(header ? 6 : 14));
-        if (clickable) tv.setBackgroundResource(android.R.drawable.list_selector_background);
-        return tv;
+    private static int safeColor(int key, int def) {
+        try { return Theme.getColor(key); } catch (Throwable e) { return def; }
     }
 
-    private void rebuild() {
-        content.removeAllViews();
-        TextView info = text(t(
-                "AHbsolute — неофициальный клиент. Он использует Telegram API, но не создан и не одобрен Telegram.",
-                "AHbsolute is an unofficial client. It uses the Telegram API but is not made or endorsed by Telegram."), false, false);
-        info.setTextSize(13);
-        content.addView(info);
-
-        content.addView(text(t("ФОРМА АВАТАРА", "AVATAR SHAPE"), true, false));
-        String[] names = {t("Круг", "Circle"), t("Квадрат", "Square"), t("Звезда", "Star"), t("Треугольник", "Triangle")};
-        for (int i = 0; i < names.length; i++) {
-            final int shape = i;
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(20), dp(8), dp(20), dp(8));
-            row.setBackgroundResource(android.R.drawable.list_selector_background);
-            row.addView(new ShapePreview(this, shape), new LinearLayout.LayoutParams(dp(36), dp(36)));
-            TextView label = new TextView(this);
-            label.setText(names[i] + (AHbsolute.getMyShape() == shape ? "   ✓" : ""));
-            label.setTextSize(16);
-            label.setPadding(dp(16), 0, 0, 0);
-            row.addView(label);
-            row.setOnClickListener(v -> { AHbsolute.setMyShape(shape); rebuild(); });
-            content.addView(row, new LinearLayout.LayoutParams(-1, -2));
+    @Override
+    public void rebuild() {
+        try {
+            AHbsoluteSettingsUi.build(this, content, this);
+        } catch (Throwable e) {
+            content.removeAllViews();
+            TextView tv = new TextView(this);
+            tv.setText("AHbsolute: " + e);
+            tv.setPadding(AndroidUtilities.dp(20), AndroidUtilities.dp(20), AndroidUtilities.dp(20), AndroidUtilities.dp(20));
+            content.addView(tv);
         }
+    }
 
-        TextView share = text(t("Показывать мою форму другим пользователям AHbsolute: ", "Show my shape to other AHbsolute users: ")
-                + (AHbsolute.isShareEnabled() ? t("ВКЛ", "ON") : t("ВЫКЛ", "OFF")), false, true);
-        share.setOnClickListener(v -> { AHbsolute.setShareEnabled(!AHbsolute.isShareEnabled()); rebuild(); });
-        content.addView(share);
-        TextView note = text(t(
-                "Если включено, к вашей фамилии добавляется невидимый маркер. Обычные клиенты видят круглый аватар и ту же фамилию. Откройте AHbsolute и войдите в аккаунт, чтобы маркер отправился в профиль.",
-                "When on, an invisible marker is appended to your last name. Regular clients see a round avatar and the same name. Open AHbsolute and sign in so the marker can be sent to your profile."), false, false);
-        note.setTextSize(12);
-        content.addView(note);
+    @Override
+    public void pickBanner() {
+        try {
+            startActivityForResult(AHbsoluteSettingsUi.pickIntent(), AHbsoluteSettingsUi.REQ_BANNER);
+        } catch (Throwable e) {
+            Toast.makeText(this, String.valueOf(e), Toast.LENGTH_LONG).show();
+        }
+    }
 
-        AHbsoluteUi.addSection(this, content, 0xFF9B4F96, 0xFF202020, 0xFF777777, this::rebuild);
-        AHbsoluteBlur.addSection(this, content, 0xFF9B4F96, 0xFF202020, 0xFF777777, this::rebuild);
-        AHbsoluteThemes.addSection(this, content, 0xFF9B4F96, 0xFF202020, 0xFF777777, this::rebuild);
+    @Override
+    public Runnable interfaceEditor() {
+        return null; // the side-menu editor lives inside Telegram: Settings → AHbsolute
+    }
 
-        content.addView(text(t("ОПТИМИЗАЦИЯ", "OPTIMIZATION"), true, false));
-        TextView clean = text(t("Очищать кэш старше 30 дней при запуске: ", "Clean cache older than 30 days on start: ")
-                + (AHbsolute.isCleanEnabled() ? t("ВКЛ", "ON") : t("ВЫКЛ", "OFF")), false, true);
-        clean.setOnClickListener(v -> { AHbsolute.setCleanEnabled(!AHbsolute.isCleanEnabled()); rebuild(); });
-        content.addView(clean);
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        AHbsoluteSettingsUi.onPicked(this, requestCode, resultCode, data, this);
     }
 }

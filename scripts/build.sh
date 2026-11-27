@@ -4,7 +4,7 @@
 #   - swap file + smaller Gradle heap
 #   - R8/minify is OFF (bigger APK, same features). Set env AH_MINIFY=1 to try R8 first.
 # Attempts (a SAFE build is never produced; every attempt keeps the menu editor and/or avatar shapes):
-#   all -> without blur -> without streak -> without both -> without splash -> menu+avatar+settings -> menu+avatar -> avatar+settings -> menu -> avatar
+#   all -> without anim/edit -> without streak/blur -> without splash -> without title -> menu+avatar+settings -> ...
 set -uo pipefail
 ROOT="$(pwd)"
 UP="$ROOT/upstream"
@@ -122,7 +122,30 @@ collect_apks() {
     return 1
   fi
   ls -la "$out"
-  return 0
+  check_test_only "$out"
+  return $?
+}
+
+# The APK must NOT carry android:testOnly="true", otherwise Android refuses to install it.
+check_test_only() {
+  local dir="$1"
+  local aapt
+  aapt=$(ls -1 "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)
+  if [ -z "$aapt" ]; then
+    echo "::warning::aapt2 not found, testOnly check skipped"
+    return 0
+  fi
+  local f
+  local bad=0
+  for f in "$dir"/*.apk; do
+    if "$aapt" dump xmltree --file AndroidManifest.xml "$f" 2>/dev/null | grep -i "testOnly" | grep -q -- "-1\|0xffffffff\|true"; then
+      echo "::error::$f is marked android:testOnly=true"
+      bad=1
+    else
+      echo "ok: $(basename "$f") testOnly=false"
+    fi
+  done
+  return $bad
 }
 
 build() {
@@ -142,7 +165,8 @@ build() {
   else
     export AH_NO_MINIFY=0
   fi
-  ./gradlew :TMessagesProj_App:assembleAfatRelease --no-daemon --stacktrace $init $abi 2>&1 | tee -a "$ROOT/build.log"
+  # -Pandroid.injected.testOnly=false: never mark the APK as testOnly (INSTALL_FAILED_TEST_ONLY on phones)
+  ./gradlew :TMessagesProj_App:assembleAfatRelease --no-daemon --stacktrace -Pandroid.injected.testOnly=false $init $abi 2>&1 | tee -a "$ROOT/build.log"
   local rc=${PIPESTATUS[0]}
   cd "$ROOT"
   if [ "$rc" -eq 0 ]; then
@@ -158,7 +182,10 @@ build() {
   return "$rc"
 }
 
-ABI="-Pandroid.injected.build.abi=arm64-v8a,armeabi-v7a"
+# ABIs are limited in build.gradle by apply_patches.py (arm64-v8a + armeabi-v7a).
+# Do NOT pass -Pandroid.injected.build.abi: Android Gradle Plugin then treats the build as an IDE build
+# and marks the APK android:testOnly="true", which phones refuse to install.
+ABI=""
 free_disk
 tune_memory
 diagnostics
@@ -166,11 +193,11 @@ diagnostics
 MODE=""
 TRIED="|"
 for feats in \
-  "menu,avatar,settings,title,streak,blur,splash" \
-  "menu,avatar,settings,title,streak,splash" \
-  "menu,avatar,settings,title,blur,splash" \
-  "menu,avatar,settings,title,splash" \
-  "menu,avatar,settings,title" \
+  "menu,avatar,settings,title,profile,streak,blur,splash,anim,edit" \
+  "menu,avatar,settings,title,profile,streak,blur,splash" \
+  "menu,avatar,settings,title,profile,splash" \
+  "menu,avatar,settings,title,profile" \
+  "menu,avatar,settings,profile" \
   "menu,avatar,settings" "menu,avatar" "avatar,settings" "menu" "avatar" ; do
   if [ -n "$MODE" ]; then break; fi
   if [ "$SECONDS" -gt 18000 ]; then
@@ -214,5 +241,5 @@ MODE_NAME="${MODE//,/-}"
 echo "MODE=$MODE_NAME" >> "$GITHUB_ENV"
 {
   echo "### AHbsolute build features: \`$MODE\`"
-  echo "menu = interface editor, avatar = avatar shapes, settings = row 'Кастомизация Пользователя' in Settings. R8 minify was off to avoid running out of memory (APK is larger)."
+  echo "menu = side-menu entry + editor, avatar = avatar shapes, settings = row 'AHbsolute' in Settings, profile = custom profile banners. APK is NOT testOnly. R8 minify was off to avoid running out of memory (APK is larger)."
 } >> "$SUMMARY"

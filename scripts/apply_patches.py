@@ -81,6 +81,46 @@ else:
     print("ok: applicationId ->", PKG, f"({cnt} places)")
     if os.path.exists(marker): os.remove(marker)
 
+# ---------- 2b. gradle.properties / app build.gradle ----------
+# APP_PACKAGE is where current Telegram-Android takes its applicationId from
+gp = os.path.join(UP, "gradle.properties")
+if os.path.exists(gp):
+    s = read(gp)
+    s2, n = re.subn(r'(?m)^APP_PACKAGE\s*=.*$', 'APP_PACKAGE=' + PKG, s)
+    # testOnly bug: an APK marked android:testOnly="true" cannot be installed normally
+    # (INSTALL_FAILED_TEST_ONLY). Force the flag off for every build.
+    s2 = re.sub(r'(?m)^android\.injected\.testOnly\s*=.*\n?', '', s2)
+    s2 = s2.rstrip("\n") + "\nandroid.injected.testOnly=false\n"
+    write(gp, s2)
+    if n:
+        cnt += n
+        print("ok: APP_PACKAGE ->", PKG)
+        if os.path.exists(marker): os.remove(marker)
+    print("ok: android.injected.testOnly=false (gradle.properties)")
+testonly_fixed = 0
+for m in walk(pattern_name="AndroidManifest.xml"):
+    t = read(m)
+    t2 = re.sub(r'android:testOnly\s*=\s*"true"', 'android:testOnly="false"', t)
+    if t2 != t:
+        write(m, t2); testonly_fixed += 1
+for g in list(walk(suffix=".gradle")) + list(walk(suffix=".kts")):
+    t = read(g)
+    t2 = re.sub(r'(testOnly\s*=?\s*)true', r'\g<1>false', t)
+    if t2 != t:
+        write(g, t2); testonly_fixed += 1
+print("info: testOnly=true replaced with false in %d file(s)" % testonly_fixed)
+appg = os.path.join(UP, "TMessagesProj_App", "build.gradle")
+if os.path.exists(appg):
+    s = read(appg)
+    if os.environ.get("AH_ALL_ABI", "0") != "1":
+        s, n = re.subn(r'abiFilters\s+"armeabi-v7a",\s*"arm64-v8a",\s*"x86",\s*"x86_64"', 'abiFilters "armeabi-v7a", "arm64-v8a"', s)
+        print("info: ABI filters limited to arm64-v8a + armeabi-v7a (%d place(s))" % n)
+    if os.environ.get("AH_MINIFY", "0") != "1":
+        s, n1 = re.subn(r'minifyEnabled\s+true', 'minifyEnabled false', s)
+        s, n2 = re.subn(r'shrinkResources\s+true', 'shrinkResources false', s)
+        print("info: R8/minify disabled in TMessagesProj_App/build.gradle (%d/%d)" % (n1, n2))
+    write(appg, s)
+
 # ---------- 3. manifests: avoid DUPLICATE_PERMISSION clash with official Telegram ----------
 pm = 0
 for m in walk(pattern_name="AndroidManifest.xml"):
@@ -291,14 +331,33 @@ def patch_settings(path):
     if done < 2: return None, "getItemViewType/isEnabled do not reference languageRow (found %d of 2)" % done
     return s, None
 
+def patch_settings_uitem(path):
+    """current Telegram: SettingsActivity.fillItems() with SettingCell.Factory.of(id, ...) rows + switch (item.id)"""
+    s = read(path)
+    m = re.search(r'(items\.add\(SettingCell\.Factory\.of\(10,[^\n]*\);)', s)
+    if not m: return None, "SettingCell row 10 (Language) not found"
+    row = ('\n        items.add(SettingCell.Factory.of(org.telegram.messenger.ahbsolute.AHbsolute.DRAWER_ID, 0xFFC46EF4, 0xFF8E4B88, '
+           'R.drawable.ahbsolute_settings_icon, "AHbsolute", org.telegram.messenger.ahbsolute.AHbsolute.t('
+           '"Баннеры, форма аватара, оформление", "Banners, avatar shape, appearance")));')
+    s = s[:m.end()] + row + s[m.end():]
+    m = re.search(r'case\s+10\s*:\s*presentSettingFragment\(new\s+LanguageSelectActivity\(\)\);\s*break;', s)
+    if not m: return None, "click 'case 10: LanguageSelectActivity' not found"
+    s = s[:m.end()] + ('\n            case org.telegram.messenger.ahbsolute.AHbsolute.DRAWER_ID:'
+                       '\n                presentSettingFragment(new org.telegram.messenger.ahbsolute.AHbsoluteSettingsActivity());'
+                       '\n                break;') + s[m.end():]
+    return s, None
+
 sa = one("SettingsActivity.java") if "settings" in FEATS else None
 if sa:
-    sa_new, e = patch_settings(sa)
+    if "SettingCell.Factory.of(" in read(sa):
+        sa_new, e = patch_settings_uitem(sa)
+    else:
+        sa_new, e = patch_settings(sa)
 else:
     sa_new, e = None, "SettingsActivity.java not found (or settings not requested)"
 if sa_new:
     write(sa, sa_new); features["settings"] = True
-    print("ok: settings patch applied (row 'Кастомизация Пользователя')")
+    print("ok: settings patch applied (row 'AHbsolute' in Settings)")
 else:
     print("WARN: settings feature skipped:", e)
     print("   context for the author:")
@@ -463,12 +522,12 @@ if "profile" in FEATS:
     else:
         s = read(pfa)
         s, n1 = re.subn(r'canvas\.drawRect\(0, 0, getMeasuredWidth\(\), y1, paint\);',
-                        'paint.setAlpha((int) (paint.getAlpha() * org.telegram.messenger.ahbsolute.AHbsoluteBanner.headerAlpha()));\n'
+                        'paint.setAlpha((int) (paint.getAlpha() * org.telegram.messenger.ahbsolute.AHbsoluteBanner.headerAlpha(userId, chatId)));\n'
                         '                    canvas.drawRect(0, 0, getMeasuredWidth(), y1, paint);', s, count=1)
         s, n2 = re.subn(r'backgroundPaint\.setAlpha\(\(int\) \(0xFF \* progressToGradient\)\);',
-                        'backgroundPaint.setAlpha((int) (0xFF * progressToGradient * org.telegram.messenger.ahbsolute.AHbsoluteBanner.headerAlpha()));', s, count=1)
+                        'backgroundPaint.setAlpha((int) (0xFF * progressToGradient * org.telegram.messenger.ahbsolute.AHbsoluteBanner.headerAlpha(userId, chatId)));', s, count=1)
         s, n3 = re.subn(r'(canvas\.drawRect\(0, 0, getMeasuredWidth\(\), y1, backgroundPaint\);\s*\})',
-                        r'\1\n                org.telegram.messenger.ahbsolute.AHbsoluteBanner.draw(canvas, getMeasuredWidth(), y1);', s, count=1)
+                        r'\1\n                org.telegram.messenger.ahbsolute.AHbsoluteBanner.draw(canvas, getMeasuredWidth(), y1, userId, chatId);', s, count=1)
         if (n1, n2, n3) == (1, 1, 1):
             write(pfa, s); features["profile"] = True
             print("ok: profile banner + header transparency hooked into ProfileActivity.TopView")
@@ -520,7 +579,8 @@ def patch_manifest():
                 '    <activity android:name="org.telegram.messenger.ahbsolute.AHbsoluteStandaloneActivity"\n'
                 '        android:exported="true"\n'
                 '        android:label="AHbsolute \u2699"\n'
-                '        android:theme="@android:style/Theme.DeviceDefault.Light">\n'
+                '        android:taskAffinity="' + PKG + '.ahbsettings"\n'
+                '        android:theme="@android:style/Theme.Material.Light.NoActionBar">\n'
                 '        <intent-filter>\n'
                 '            <action android:name="android.intent.action.MAIN" />\n'
                 '            <category android:name="android.intent.category.LAUNCHER" />\n'
@@ -547,11 +607,19 @@ al = one("ApplicationLoader.java")
 if not al: fail("ApplicationLoader.java not found", required=False)
 else:
     s = read(al)
+    hook = '\n        try { org.telegram.messenger.ahbsolute.AHbsolute.onAppStart(this); } catch (Throwable ignored) {}'
     m = re.search(r'public\s+void\s+onCreate\s*\(\s*\)\s*\{\s*super\.onCreate\(\);', s)
-    if not m: fail("ApplicationLoader.onCreate not found", required=False)
-    else:
-        s = s[:m.end()] + '\n        try { org.telegram.messenger.ahbsolute.AHbsolute.onAppStart(this); } catch (Throwable ignored) {}' + s[m.end():]
+    if m:
+        s = s[:m.end()] + hook + s[m.end():]
         write(al, s); print("ok: ApplicationLoader patched")
+    else:
+        # current Telegram: no super.onCreate() first -> add the hook at the end of onCreate()
+        m = re.search(r'public\s+void\s+onCreate\s*\(\s*\)\s*\{', s)
+        end = brace_end(s, m.end() - 1) if m else -1
+        if end < 0: fail("ApplicationLoader.onCreate not found", required=False)
+        else:
+            s = s[:end] + hook.replace('\n        ', '    ', 1) + '\n    ' + s[end:]
+            write(al, s); print("ok: ApplicationLoader patched (end of onCreate)")
 
 if failures:
     print("\n%d required patch(es) failed. Upstream code layout probably changed; see README, section 'If the build fails'." % len(failures))
