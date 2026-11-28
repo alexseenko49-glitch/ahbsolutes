@@ -239,9 +239,12 @@ public class AHbsoluteChats extends RecyclerView.ItemDecoration {
 
     /** gradient text, the AHbsolute signature (violet → pink) */
     private static class GradientSpan extends CharacterStyle implements UpdateAppearance {
+        private final int variant;
+        GradientSpan(int variant) { this.variant = variant; }
         @Override public void updateDrawState(TextPaint tp) {
             float w = tp.measureText("AHbsolute");
-            tp.setShader(new LinearGradient(0, 0, w, 0, new int[]{0xFF8B5CFF, 0xFFC86BFA, 0xFFFF6FA8}, null, Shader.TileMode.CLAMP));
+            int[] cols = variant == 2 ? new int[]{0xFF14B8A6, 0xFF22D3EE, 0xFF818CF8} : new int[]{0xFF8B5CFF, 0xFFC86BFA, 0xFFFF6FA8};
+            tp.setShader(new LinearGradient(0, 0, w, 0, cols, null, Shader.TileMode.CLAMP));
             tp.setFakeBoldText(true);
         }
     }
@@ -254,9 +257,9 @@ public class AHbsoluteChats extends RecyclerView.ItemDecoration {
         try {
             ssb.clear();
             ssb.append("AHbsolute");
-            boolean design = false;
-            try { design = AHbsoluteDesign.isOn(AHbsoluteUi.ctx()); } catch (Throwable ignored) { }
-            if (design) ssb.setSpan(new GradientSpan(), 0, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            int design = 0;
+            try { design = AHbsoluteDesign.variant(AHbsoluteUi.ctx()); } catch (Throwable ignored) { }
+            if (design != 0) ssb.setSpan(new GradientSpan(design), 0, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             else ssb.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), 0, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         } catch (Throwable ignored) { }
     }

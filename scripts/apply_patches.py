@@ -5,7 +5,7 @@ Required patches fail loudly (exit 1) so CI never silently builds something half
 import os, re, sys, json
 
 SAFE = "--safe" in sys.argv
-FEATS = {"menu", "avatar", "settings", "title", "streak", "blur", "splash", "anim", "profile", "edit", "pwall", "playout", "repost", "main", "msgglass", "fall", "order"}
+FEATS = {"menu", "avatar", "settings", "title", "streak", "blur", "splash", "anim", "profile", "edit", "pwall", "playout", "repost", "main", "msgglass", "fall", "order", "mini"}
 for _a in sys.argv[1:]:
     if _a.startswith("--features="):
         FEATS = {x.strip() for x in _a.split("=", 1)[1].split(",") if x.strip()}
@@ -575,7 +575,7 @@ def subs_all(path, rules):
     return t, None
 
 AHP = "org.telegram.messenger.ahbsolute.AHbsoluteProfile"
-pfa_path = one("ProfileActivity.java") if ({"pwall", "playout", "repost", "main", "msgglass", "fall", "order"} & FEATS) else None
+pfa_path = one("ProfileActivity.java") if ({"pwall", "playout", "repost", "main", "msgglass", "fall", "order", "mini"} & FEATS) else None
 
 # ---- group "pwall": own picture as profile wallpaper + glass profile (ProfileActivity + RecyclerListView) ----
 if "pwall" in FEATS:
@@ -798,6 +798,39 @@ if "order" in FEATS:
         else:
             print("WARN: order feature skipped:", e)
             show(dca3, [r'isDialogPinned\(dialog\)', r'return messagesController\.getDialogs\(folderId\)', r'moveDialogs\('])
+
+# ---- group "mini": 📎 → «Мини-профиль» + opening "[Профиль]" links in AHbsolute (ChatAttachAlert, Browser, AlertsCreator) ----
+if "mini" in FEATS:
+    caa = one("ChatAttachAlert.java")
+    brw = one("Browser.java")
+    alc = one("AlertsCreator.java")
+    AHM = "org.telegram.messenger.ahbsolute.AHbsoluteMini"
+    if not (caa and brw and alc):
+        print("WARN: mini feature skipped: ChatAttachAlert / Browser / AlertsCreator not found")
+    else:
+        a_new, e1 = subs_all(caa, [
+            (r'(private int richButton;)', r'\1\n        private int ahbMiniButton = -1;', 1, 1),
+            (r'(\n(\s*)richButton = -1;)', lambda m: m.group(1) + '\n' + m.group(2) + 'ahbMiniButton = -1;', 1, 1),
+            (r'(if \(plainTextEnabled\) \{\s*contactButton = buttonsCount\+\+;\s*\})',
+             lambda m: m.group(1) + '\n                if (' + AHM + '.enabled() && baseFragment instanceof ChatActivity) {\n                    ahbMiniButton = buttonsCount++;\n                }', 1, 1),
+            (r'\} else if \(position == richButton\) \{',
+             '} else if (position == ahbMiniButton) {\n                        attachButton.setTextAndIcon(5, ' + AHM + '.label(), GlassTabView.TabAnimation.CONTACTS);\n                        attachButton.setTag(' + AHM + '.ATTACH_TAG);\n                    } else if (position == richButton) {', 1, 1),
+            (r'(int num = view\.getTag\(\) instanceof Integer \? \(Integer\) view\.getTag\(\) : -1;)',
+             r'\1' + '\n                if (num == ' + AHM + '.ATTACH_TAG) {\n                    dismiss();\n                    ' + AHM + '.sendFromAttach(baseFragment);\n                    return;\n                }', 1, 1),
+        ])
+        b_new, e2 = subs_all(brw, [
+            (r'(public static void openUrl\(final Context context, Uri uri, boolean _allowCustom, boolean tryTelegraph, boolean forceNotInternalForApps, Progress inCaseLoading, String browser, boolean allowIntent, boolean allowInAppBrowser, boolean forceRequest, boolean keepWebAuthTokens\) \{\s*if \(context == null \|\| uri == null\) \{\s*return;\s*\})',
+             r'\1' + '\n        if (' + AHM + '.intercept(context, uri.toString())) return;', 1, 1),
+        ])
+        l_new, e3 = subs_all(alc, [
+            (r'(public static void showOpenUrlAlert\(Context context, String url, boolean punycode, boolean tryTelegraph, boolean ask, boolean forceNotInternalForApps, long inlineReturn, Browser\.Progress progress, @Nullable TLRPC\.WebPage webPage, Theme\.ResourcesProvider resourcesProvider\) \{)',
+             r'\1' + '\n        if (' + AHM + '.intercept(context, url)) return;', 1, 1),
+        ])
+        if a_new and b_new and l_new:
+            write(caa, a_new); write(brw, b_new); write(alc, l_new); features["mini"] = True
+            print("ok: mini profile: 📎 button + [Профиль] links open in AHbsolute")
+        else:
+            print("WARN: mini feature skipped:", e1 or e2 or e3)
 
 # ---- always: second launcher icon "AHbsolute ⚙" (opens AHbsoluteStandaloneActivity: avatar shape, etc.) ----
 def patch_manifest():

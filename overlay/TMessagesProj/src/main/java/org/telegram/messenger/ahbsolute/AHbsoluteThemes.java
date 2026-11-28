@@ -28,8 +28,8 @@ import static org.telegram.messenger.ahbsolute.AHbsolute.t;
  */
 public class AHbsoluteThemes {
 
-    private static final String[] IDS = {"vice", "chess", "absolut", "teg", "design1", "design1n"};
-    private static final String[] NAMES = {"Vice", "Chess", "Absolut", "Teg", "Absolute Design 1", "Absolute Design 1 Night"};
+    private static final String[] IDS = {"vice", "chess", "absolut", "teg", "design1", "design1n", "design2", "design2n"};
+    private static final String[] NAMES = {"Vice", "Chess", "Absolut", "Teg", "Absolute Design 1", "Absolute Design 1 Night", "Absolute Design 2", "Absolute Design 2 Night"};
     // dark, bg, bgGray, text, hint, accent, bar, bubbleIn, bubbleOut, textOut, link
     private static final long[][] P = {
         // vice: deep blue -> magenta
@@ -44,6 +44,10 @@ public class AHbsoluteThemes {
         {0, 0xFFFFFFFFL, 0xFFF2F1F7L, 0xFF111018L, 0xFF8B8A96L, 0xFF6D4AFFL, 0xFF6D4AFFL, 0xFFFFFFFFL, 0xFFE9E3FFL, 0xFF16112EL, 0xFF5B37F0L},
         // Absolute Design 1 Night: near-black, glowing violet
         {1, 0xFF16151CL, 0xFF0C0B10L, 0xFFF3F2F8L, 0xFF8F8D9CL, 0xFFA48BFFL, 0xFF16151CL, 0xFF221F2BL, 0xFF6444E8L, 0xFFFFFFFFL, 0xFFBBA8FFL},
+        // Absolute Design 2 «Aurora»: fresh mint / teal
+        {0, 0xFFFFFFFFL, 0xFFEEF5F3L, 0xFF0E1A17L, 0xFF7E908BL, 0xFF0FB5A4L, 0xFF0EA39BL, 0xFFFFFFFFL, 0xFFD5F4EDL, 0xFF0E1A17L, 0xFF0B8C80L},
+        // Absolute Design 2 Night: deep green-black, glowing aurora teal
+        {1, 0xFF0F1716L, 0xFF090F0EL, 0xFFEAF6F3L, 0xFF83A09AL, 0xFF2DD4BFL, 0xFF0F1716L, 0xFF16221FL, 0xFF0F766EL, 0xFFFFFFFFL, 0xFF5EEAD4L},
     };
 
     private static SharedPreferences prefs(Context c) { return c.getSharedPreferences("ahb_theme_ui", Context.MODE_PRIVATE); }

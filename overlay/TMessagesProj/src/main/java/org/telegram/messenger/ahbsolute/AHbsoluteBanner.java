@@ -34,8 +34,8 @@ import java.util.Arrays;
  */
 public class AHbsoluteBanner {
 
-    public static final String[] BUILTIN = {"vice", "chess", "absolut", "teg", "design1", "design1n"};
-    public static final String[] BUILTIN_NAMES = {"Vice", "Chess", "Absolut", "Teg", "Absolute Design 1", "Absolute Design 1 Night"};
+    public static final String[] BUILTIN = {"vice", "chess", "absolut", "teg", "design1", "design1n", "design2", "design2n"};
+    public static final String[] BUILTIN_NAMES = {"Vice", "Chess", "Absolut", "Teg", "Absolute Design 1", "Absolute Design 1 Night", "Absolute Design 2", "Absolute Design 2 Night"};
     public static final String OFF = "off", THEME = "theme";
     private static final String USER_PREFIX = "u_";
     private static final int MAX_SIDE = 1600;

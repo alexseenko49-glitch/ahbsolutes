@@ -148,8 +148,8 @@ public class AHbsoluteUi {
                         ((Application) app).registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
                             @Override public void onActivityCreated(Activity a, Bundle b) { }
                             @Override public void onActivityStarted(Activity a) { }
-                            @Override public void onActivityResumed(Activity a) { onResumed(a); }
-                            @Override public void onActivityPaused(Activity a) { stopShake(); flush(); }
+                            @Override public void onActivityResumed(Activity a) { onResumed(a); AHbsoluteShake.resume(a); }
+                            @Override public void onActivityPaused(Activity a) { stopShake(); flush(); AHbsoluteShake.pause(); }
                             @Override public void onActivityStopped(Activity a) { }
                             @Override public void onActivitySaveInstanceState(Activity a, Bundle b) { }
                             @Override public void onActivityDestroyed(Activity a) { }

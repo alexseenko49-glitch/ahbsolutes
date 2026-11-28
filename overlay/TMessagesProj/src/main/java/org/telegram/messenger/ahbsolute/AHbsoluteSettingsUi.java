@@ -363,17 +363,31 @@ public class AHbsoluteSettingsUi {
         // ---------- Absolute Design 1 ----------
         final TextCheckCell design = new TextCheckCell(c);
         design.setTextAndValueAndCheck(AHbsoluteDesign.title(), t("Новый интерфейс AHbsolute", "The new AHbsolute interface"),
-                AHbsoluteDesign.isOn(c), false, false);
+                AHbsoluteDesign.variant(c) == 1, false, true);
         sel(design);
         design.setOnClickListener(v -> {
-            boolean on = !AHbsoluteDesign.isOn(c);
-            String err = AHbsoluteDesign.setOn(c, on);
+            boolean on = AHbsoluteDesign.variant(c) != 1;
+            String err = AHbsoluteDesign.setVariant(c, on ? 1 : 0);
             if (err != null) Toast.makeText(c, t("Тема не применилась: ", "Theme was not applied: ") + err, Toast.LENGTH_LONG).show();
             else if (on) Toast.makeText(c, t("Absolute Design 1 включён ✨ Откройте свой профиль.", "Absolute Design 1 is on ✨ Open your profile."), Toast.LENGTH_LONG).show();
             host.rebuild();
         });
+        final TextCheckCell design2 = new TextCheckCell(c);
+        design2.setTextAndValueAndCheck(AHbsoluteDesign.title2(), "Aurora", AHbsoluteDesign.variant(c) == 2, false, false);
+        sel(design2);
+        design2.setOnClickListener(v -> {
+            boolean on = AHbsoluteDesign.variant(c) != 2;
+            String err = AHbsoluteDesign.setVariant(c, on ? 2 : 0);
+            if (err != null) Toast.makeText(c, t("Тема не применилась: ", "Theme was not applied: ") + err, Toast.LENGTH_LONG).show();
+            else if (on) Toast.makeText(c, t("Absolute Design 2 «Aurora» включён ✨", "Absolute Design 2 «Aurora» is on ✨"), Toast.LENGTH_LONG).show();
+            host.rebuild();
+        });
         list.addCard(design, -2);
-        info(c, list, AHbsoluteDesign.subtitle());
+        list.addCard(design2, -2);
+        check(c, list, t("Встряхнуть — сменить дизайн", "Shake to switch design"), AHbsoluteShake.enabled(), false,
+                () -> AHbsoluteShake.setEnabled(c, !AHbsoluteShake.enabled()));
+        info(c, list, AHbsoluteDesign.subtitle() + "\n\n" + AHbsoluteDesign.subtitle2() + "\n\n"
+                + t("Встряхните телефон три раза — дизайн переключится: Design 1 → Design 2 → обычный вид.", "Shake the phone three times to switch: Design 1 → Design 2 → regular look."));
 
         // ---------- profile ----------
         header(c, list, t("Профиль", "Profile"));
@@ -471,8 +485,8 @@ public class AHbsoluteSettingsUi {
         uiCheck(c, list, t("Экстремальное удаление", "Extreme delete"), "erase", false);
         info(c, list, t("Liquid Glass: сообщения становятся каплями стекла, сквозь них видны обои. Падающие буквы: стёртые буквы выпрыгивают из поля ввода, падают на сообщения или на чат и исчезают за 2 секунды.",
                 "Liquid Glass: messages become drops of glass with the wallpaper showing through. Falling letters: erased letters jump out of the input field, land on the messages or the chat and fade within 2 seconds."));
-        info(c, list, t("Экстремальное удаление: нажмите на своё сообщение → «Экстремальное удаление». Без вопросов оно удаляется у всех на сервере и из памяти телефона — в чате не остаётся даже следа. Скриншоты, уже показанные уведомления и приложения, которые сами копируют сообщения, стереть невозможно.",
-                "Extreme delete: tap your message → \"Extreme delete\". Without questions it is deleted for everyone on the server and from this phone — not even a trace stays in the chat. Screenshots, notifications already shown and apps that copy messages themselves cannot be erased."));
+        info(c, list, t("Экстремальное удаление: нажмите на своё сообщение → «Экстремальное удаление». Без вопросов оно удаляется у всех на сервере и из памяти телефона — в чате не остаётся даже следа. Скриншоты, уже показанные уведомления, приложения, которые сами копируют сообщения, и боты Telegram Business у собеседника (они получают копию сообщения в момент отправки и видят удаление) — обойти невозможно никаким клиентом.",
+                "Extreme delete: tap your message → \"Extreme delete\". Without questions it is deleted for everyone on the server and from this phone — not even a trace stays in the chat. Screenshots, notifications already shown, apps that copy messages themselves and the other person's Telegram Business bots (they get a copy when the message is sent and see the deletion) cannot be bypassed by any client."));
 
         // ---------- banner ----------
         header(c, list, t("Баннер профиля", "Profile banner"));
@@ -639,6 +653,10 @@ public class AHbsoluteSettingsUi {
         }
         info(c, list, t("Ваш баннер, обои, стекло и репосты постов увидят пользователи AHbsolute, открыв ваш профиль. Нужен личный канал (свой профиль → «Изменить» → «Личный канал»): AHbsolute публикует туда пост «Мой профиль в AHbsolute» и картинки. В обычном Telegram это просто посты вашего канала. Репосты обычных сообщений не публикуются никогда.",
                 "AHbsolute users who open your profile will see your banner, wallpaper, glass and reposts of posts. A personal channel is needed (your profile → Edit → Personal channel): AHbsolute posts \"My profile in AHbsolute\" and the pictures there. In regular Telegram these are just posts of your channel. Reposts of ordinary messages are never published."));
+
+        uiCheck(c, list, t("Мини-профиль в 📎", "Mini profile in 📎"), "miniprofile", false);
+        info(c, list, t("📎 → «Мини-профиль» отправляет сообщение «[Профиль]». В AHbsolute по нему открывается пролистываемый мини-профиль с вашим оформлением и кнопкой «Применить себе». Без AHbsolute видно просто «[Профиль]» — ссылку на проект.",
+                "📎 → \"Mini profile\" sends a \"[Profile]\" message. In AHbsolute it opens a scrollable mini profile with your look and an \"Apply to me\" button. Without AHbsolute it is just \"[Profile]\" — a link to the project."));
 
         // ---------- settings transfer ----------
         header(c, list, t("Перенос настроек", "Settings transfer"));

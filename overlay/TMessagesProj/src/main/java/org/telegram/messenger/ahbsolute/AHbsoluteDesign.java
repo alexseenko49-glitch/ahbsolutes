@@ -19,18 +19,44 @@ import static org.telegram.messenger.ahbsolute.AHbsolute.t;
  */
 public class AHbsoluteDesign {
 
-    private static final String[] UI_KEYS = {"master", "glass", "topbar", "anim", "wp", "msgglass", "chatcards", "mainwall"};
+    private static final String[] UI_KEYS = {"master", "glass", "topbar", "anim", "wp", "msgglass", "chatcards", "mainwall", "textfall"};
     private static final String[][] STR_KEYS = {
             {"banner", AHbsoluteBanner.OFF}, {"banner_pos", "50"}, {"banner_fade", "40"}, {"banner_dim", "15"}, {"banner_op", "100"},
             {"prof_wp", AHbsoluteBanner.OFF}, {"prof_glass", "0"}, {"prof_glass_op", "62"}, {"prof_wp_blur", "1"}, {"prof_wp_dim", "0"},
             {"chat_gap", "0"}, {"chat_radius", "18"}, {"msgglass_op", "62"},
+            {"bar_size", "92"}, {"bar_radius", "24"}, {"bar_margin", "10"}, {"prof_av_pos", "0"}, {"prof_name_align", "3"},
     };
 
     private static SharedPreferences sp(Context c) { return c.getApplicationContext().getSharedPreferences("ahb_design", Context.MODE_PRIVATE); }
 
-    public static boolean isOn(Context c) { return c != null && sp(c).getBoolean("d1", false); }
+    public static boolean isOn(Context c) { return variant(c) != 0; }
+
+    /** 0 = off, 1 = Absolute Design 1, 2 = Absolute Design 2 «Aurora» */
+    public static int variant(Context c) {
+        if (c == null) return 0;
+        SharedPreferences p = sp(c);
+        int v = p.getInt("dv", -1);
+        if (v < 0) v = p.getBoolean("d1", false) ? 1 : 0;
+        return v;
+    }
 
     public static String title() { return "Absolute Design 1"; }
+    public static String title2() { return "Absolute Design 2"; }
+
+    public static String subtitle2() {
+        return t("«Aurora»: мятно-бирюзовая тема с северным сиянием, капсула-панель, крупные стеклянные карточки, аватар слева и имя рядом, Liquid Glass и падающие буквы.",
+                "«Aurora»: mint-teal northern-lights theme, capsule bar, large glass cards, avatar on the left with the name beside it, Liquid Glass and falling letters.");
+    }
+
+    /** switches between off / Design 1 / Design 2 (the previous design is undone first) */
+    public static String setVariant(Context c, int v) {
+        int cur = variant(c);
+        if (cur == v) return null;
+        String err = null;
+        if (cur != 0) err = setOnInternal(c, false, cur);
+        if (v != 0) err = setOnInternal(c, true, v);
+        return err;
+    }
 
     public static String subtitle() {
         return t("Новый интерфейс AHbsolute: чаты-карточки из стекла поверх фирменных обоев, градиентный заголовок, сообщения Liquid Glass, стеклянный профиль и плавные анимации. Все функции Telegram и AHbsolute на месте.",
@@ -38,8 +64,9 @@ public class AHbsoluteDesign {
     }
 
     /** returns null on success, otherwise an error text */
-    public static String setOn(Context c, boolean on) {
-        if (on == isOn(c)) return null;
+    public static String setOn(Context c, boolean on) { return setVariant(c, on ? 1 : 0); }
+
+    private static String setOnInternal(Context c, boolean on, int v) {
         String err = null;
         try {
             if (on) {
@@ -48,12 +75,13 @@ public class AHbsoluteDesign {
                 for (String k : UI_KEYS) b.put("b_" + k, AHbsoluteUi.getBool(k));
                 for (String[] kv : STR_KEYS) b.put("s_" + kv[0], AHbsoluteUi.getStr(kv[0], kv[1]));
                 b.put("theme", AHbsoluteThemes.selectedId(c));
-                sp(c).edit().putString("backup", b.toString()).putBoolean("d1", true).apply();
+                sp(c).edit().putString("backup", b.toString()).putBoolean("d1", v == 1).putInt("dv", v).apply();
 
                 for (String k : UI_KEYS) if (!AHbsoluteUi.getBool(k)) AHbsoluteUi.toggle(c, k);
                 boolean night = false;
                 try { night = org.telegram.ui.ActionBar.Theme.isCurrentThemeDark(); } catch (Throwable ignored) { }
-                int idx = AHbsoluteThemes.indexOf(night ? "design1n" : "design1");
+                String base = v == 2 ? "design2" : "design1";
+                int idx = AHbsoluteThemes.indexOf(night ? base + "n" : base);
                 if (idx >= 0) err = AHbsoluteThemes.apply(c, idx);
                 // glass profile over the design wallpaper; the banner shows the top of the same picture,
                 // so header and page read as one continuous image
@@ -70,6 +98,19 @@ public class AHbsoluteDesign {
                 AHbsoluteUi.putStr("chat_gap", "6");
                 AHbsoluteUi.putStr("chat_radius", "20");
                 AHbsoluteUi.putStr("msgglass_op", night ? "58" : "66");
+                if (v == 2) {
+                    // Aurora: roomier, rounder, avatar on the left with the name next to it
+                    AHbsoluteUi.putStr("chat_gap", "8");
+                    AHbsoluteUi.putStr("chat_radius", "24");
+                    AHbsoluteUi.putStr("bar_size", "88");
+                    AHbsoluteUi.putStr("bar_radius", "99");
+                    AHbsoluteUi.putStr("bar_margin", "14");
+                    AHbsoluteUi.putStr("prof_av_pos", "1");
+                    AHbsoluteUi.putStr("prof_name_align", "4");
+                    AHbsoluteUi.putStr("prof_glass_op", night ? "48" : "55");
+                    AHbsoluteUi.putStr("msgglass_op", night ? "52" : "60");
+                    if (!AHbsoluteUi.getBool("textfall")) AHbsoluteUi.toggle(c, "textfall");
+                }
             } else {
                 JSONObject b = new JSONObject(sp(c).getString("backup", "{}"));
                 Iterator<String> it = b.keys();
@@ -85,14 +126,15 @@ public class AHbsoluteDesign {
                 String prev = b.optString("theme", "");
                 int idx = AHbsoluteThemes.indexOf(prev);
                 err = idx >= 0 ? AHbsoluteThemes.apply(c, idx) : AHbsoluteThemes.reset(c);
-                sp(c).edit().putBoolean("d1", false).remove("backup").apply();
+                sp(c).edit().putBoolean("d1", false).putInt("dv", 0).remove("backup").apply();
             }
         } catch (Throwable e) {
             err = String.valueOf(e);
         }
         AHbsoluteBanner.invalidate();
         AHbsoluteProfile.invalidate();
-        AHbsoluteUi.diag("d_design", (on ? "on" : "off") + (err == null ? ", ok" : ", " + err));
+        AHbsoluteUi.diag("d_design", "design " + v + (on ? " on" : " off") + (err == null ? ", ok" : ", " + err));
+        AHbsoluteShare.publishSoon();
         return err;
     }
 }
