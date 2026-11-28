@@ -59,7 +59,7 @@ public class AHbsoluteBanner {
     /* ------------------------------------------------------------ settings ------------------------------------------------------------ */
 
     public static String mode() { return AHbsoluteUi.getStr("banner", OFF); }
-    public static void setMode(String m) { AHbsoluteUi.putStr("banner", m); }
+    public static void setMode(String m) { AHbsoluteUi.putStr("banner", m); AHbsoluteShare.publishSoon(); }
     public static int brightness() { return AHbsoluteUi.getInt("banner_op", 100); }
     public static int darken() { return AHbsoluteUi.getInt("banner_dim", 15); }
     public static int fade() { return AHbsoluteUi.getInt("banner_fade", 70); }
@@ -212,7 +212,9 @@ public class AHbsoluteBanner {
             Context c = AHbsoluteUi.ctx();
             if (c == null || w <= 0 || h <= 0 || !AHbsoluteUi.master(c)) return;
             boolean wall = AHbsoluteProfile.wallpaperFor(userId, chatId);
-            Bitmap b = visibleFor(userId, chatId) ? current(c) : null;
+            // another AHbsolute user's own banner (personal channel) wins over yours
+            Bitmap b = chatId == 0 ? AHbsoluteShare.bannerBitmap(userId) : null;
+            if (b == null) b = visibleFor(userId, chatId) ? current(c) : null;
             if (b != null) drawBitmap(canvas, b, w, h, wall);
             if (wall) drawScrim(canvas, w, h);
         } catch (Throwable ignored) { }

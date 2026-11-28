@@ -5,7 +5,7 @@ Required patches fail loudly (exit 1) so CI never silently builds something half
 import os, re, sys, json
 
 SAFE = "--safe" in sys.argv
-FEATS = {"menu", "avatar", "settings", "title", "streak", "blur", "splash", "anim", "profile", "edit", "pwall", "playout", "repost", "main", "msgglass", "fall"}
+FEATS = {"menu", "avatar", "settings", "title", "streak", "blur", "splash", "anim", "profile", "edit", "pwall", "playout", "repost", "main", "msgglass", "fall", "order"}
 for _a in sys.argv[1:]:
     if _a.startswith("--features="):
         FEATS = {x.strip() for x in _a.split("=", 1)[1].split(",") if x.strip()}
@@ -575,7 +575,7 @@ def subs_all(path, rules):
     return t, None
 
 AHP = "org.telegram.messenger.ahbsolute.AHbsoluteProfile"
-pfa_path = one("ProfileActivity.java") if ({"pwall", "playout", "repost", "main", "msgglass", "fall"} & FEATS) else None
+pfa_path = one("ProfileActivity.java") if ({"pwall", "playout", "repost", "main", "msgglass", "fall", "order"} & FEATS) else None
 
 # ---- group "pwall": own picture as profile wallpaper + glass profile (ProfileActivity + RecyclerListView) ----
 if "pwall" in FEATS:
@@ -590,7 +590,7 @@ if "pwall" in FEATS:
         ])
         p_new, e2 = subs_all(pfa_path, [
             (r'(ThemeBind\.backgroundColor\(listView,\s*Theme\.key_windowBackgroundGray,\s*resourcesProvider\);)',
-             r'\1\n        ' + AHP + r'.setupList(listView, userId, chatId);', 1, 1),
+             r'\1\n        ' + AHP + r'.onProfile(this, listView, userId, chatId);', 1, 1),
             (r'(\n(\s*)super\.dispatchDraw\(canvas\);\s*/\*\s*if \(profileTransitionInProgress)',
              lambda m: '\n' + m.group(2) + AHP + '.drawWallpaper(canvas, this, userId, chatId);' + m.group(1), 1, 1),
             # the header lets the wallpaper through (banner + wallpaper read as one picture)
@@ -657,20 +657,28 @@ if "repost" in FEATS:
                        '\n                    items.add(' + AHR + '.label());'
                        '\n                    options.add(' + AHR + '.OPTION);'
                        '\n                    icons.add(R.drawable.msg_share);'
+                       '\n                }'
+                       '\n                if (org.telegram.messenger.ahbsolute.AHbsoluteErase.canErase(selectedObject)) {'
+                       '\n                    items.add(org.telegram.messenger.ahbsolute.AHbsoluteErase.label());'
+                       '\n                    options.add(org.telegram.messenger.ahbsolute.AHbsoluteErase.OPTION);'
+                       '\n                    icons.add(R.drawable.msg_delete);'
                        '\n                }', 1, 0),
             (r'(\n(\s*)case OPTION_FORWARD:\s*\{)',
              lambda m: '\n' + m.group(2) + 'case ' + AHR + '.OPTION: {\n' + m.group(2) + '    ' + AHR + '.add(getParentActivity(), selectedObject, currentChat);\n'
+                       + m.group(2) + '    selectedObject = null;\n' + m.group(2) + '    selectedObjectGroup = null;\n' + m.group(2) + '    break;\n' + m.group(2) + '}'
+                       + '\n' + m.group(2) + 'case org.telegram.messenger.ahbsolute.AHbsoluteErase.OPTION: {\n'
+                       + m.group(2) + '    org.telegram.messenger.ahbsolute.AHbsoluteErase.erase(getParentActivity(), currentAccount, selectedObject, selectedObjectGroup, dialog_id, currentEncryptedChat);\n'
                        + m.group(2) + '    selectedObject = null;\n' + m.group(2) + '    selectedObjectGroup = null;\n' + m.group(2) + '    break;\n' + m.group(2) + '}' + m.group(1), 1, 1),
         ])
         p_new, e2 = subs_all(pfa_path, [
             (r'(private\s+int\s+reportRow;)', r'\1\n    private int ahbRepostsRow = -1;', 1, 1),
             (r'(\n(\s*)reportRow = -1;)', lambda m: m.group(1) + '\n' + m.group(2) + 'ahbRepostsRow = -1;', 1, 1),
             (r'(\n(\s*)infoEndRow = rowCount - 1;\s*infoSectionRow = rowCount\+\+;)',
-             lambda m: '\n' + m.group(2) + 'if (userId != 0 && userId == getUserConfig().getClientUserId() && ' + AHR + '.enabled()) ahbRepostsRow = rowCount++;' + m.group(1), 1, 1),
+             lambda m: '\n' + m.group(2) + 'if (userId != 0 && ' + AHR + '.showRow(userId)) ahbRepostsRow = rowCount++;' + m.group(1), 1, 1),
             (r'(\}\s*else\s+if\s*\(position == reportRow\)\s*\{\s*ReportBottomSheet)',
-             lambda m: '} else if (position == ahbRepostsRow) {\n                presentFragment(new org.telegram.messenger.ahbsolute.AHbsoluteRepostsActivity());\n            ' + m.group(1), 1, 1),
+             lambda m: '} else if (position == ahbRepostsRow) {\n                presentFragment(new org.telegram.messenger.ahbsolute.AHbsoluteRepostsActivity(userId));\n            ' + m.group(1), 1, 1),
             (r'(\}\s*else\s+if\s*\(position == reportRow\)\s*\{\s*textCell\.setText\()',
-             lambda m: '} else if (position == ahbRepostsRow) {\n                        textCell.setTextAndValueAndIcon(' + AHR + '.rowTitle(), ' + AHR + '.rowValue(), false, R.drawable.msg_share, false);'
+             lambda m: '} else if (position == ahbRepostsRow) {\n                        textCell.setTextAndValueAndIcon(' + AHR + '.rowTitle(), ' + AHR + '.rowValue(userId), false, R.drawable.msg_share, false);'
                        '\n                        textCell.setColors(Theme.key_windowBackgroundWhiteGrayIcon, Theme.key_windowBackgroundWhiteBlackText);\n                    ' + m.group(1), 1, 1),
             (r'(position == settingsTimerRow \|\| position == settingsKeyRow \|\| position == reportRow \|\|)', r'position == ahbRepostsRow || \1', 1, 1),
             (r'(put\(\+\+pointer, reportRow, sparseIntArray\);)', r'\1\n            put(++pointer, ahbRepostsRow, sparseIntArray);', 1, 1),
@@ -761,6 +769,35 @@ if "fall" in FEATS:
         else:
             print("WARN: fall feature skipped:", e)
             show(caev, [r'addTextChangedListener'])
+
+# ---- group "order": move any chat up / down (DialogsActivity) ----
+if "order" in FEATS:
+    dca3 = one("DialogsActivity.java")
+    if not dca3:
+        print("WARN: order feature skipped: DialogsActivity.java not found")
+    else:
+        AHO = "org.telegram.messenger.ahbsolute.AHbsoluteOrder"
+        o_new, e = subs_all(dca3, [
+            # the list of the main screen: moved chats are put where the user left them
+            (r'if \(dialogsType == DIALOGS_TYPE_DEFAULT\) \{\s*return messagesController\.getDialogs\(folderId\);',
+             'if (dialogsType == DIALOGS_TYPE_DEFAULT) {\n            return ' + AHO + '.apply(messagesController.getDialogs(folderId), folderId);', 1, 1),
+            # dragging in selection mode: also unpinned chats (main list only)
+            (r'if \(!allowMoving \|\| dialog == null \|\| !isDialogPinned\(dialog\) \|\| DialogObject\.isFolderDialogId\(dialogId\)\) \{',
+             'if (!allowMoving || dialog == null || !(isDialogPinned(dialog) || (' + AHO + '.on() && parentPage.dialogsType == DIALOGS_TYPE_DEFAULT)) || DialogObject.isFolderDialogId(dialogId)) {', 1, 1),
+            (r'(TLRPC\.Dialog dialog = getMessagesController\(\)\.dialogs_dict\.get\(dialogId\);\s*)if \(dialog == null \|\| !isDialogPinned\(dialog\) \|\| DialogObject\.isFolderDialogId\(dialogId\)\) \{\s*return false;\s*\}',
+             lambda m: m.group(1) + 'if (dialog == null || !(isDialogPinned(dialog) || (' + AHO + '.on() && parentPage.dialogsType == DIALOGS_TYPE_DEFAULT)) || DialogObject.isFolderDialogId(dialogId)) {\n                return false;\n            }\n'
+                       '            final long ahbSrcId = source.itemView instanceof DialogCell ? ((DialogCell) source.itemView).getDialogId() : 0;\n'
+                       '            final TLRPC.Dialog ahbSrc = getMessagesController().dialogs_dict.get(ahbSrcId);\n'
+                       '            if (ahbSrc == null || isDialogPinned(ahbSrc) != isDialogPinned(dialog)) {\n                return false;\n            }', 1, 1),
+            (r'(parentPage\.dialogsAdapter\.moveDialogs\(parentPage\.listView, fromIndex, toIndex\);)',
+             r'\1' + '\n            if (!isDialogPinned(dialog)) {\n                ' + AHO + '.onMoved(getMessagesController().getDialogs(folderId), ahbSrcId);\n                return true;\n            }', 1, 1),
+        ])
+        if o_new:
+            write(dca3, o_new); features["order"] = True
+            print("ok: any chat can be moved up / down (DialogsActivity)")
+        else:
+            print("WARN: order feature skipped:", e)
+            show(dca3, [r'isDialogPinned\(dialog\)', r'return messagesController\.getDialogs\(folderId\)', r'moveDialogs\('])
 
 # ---- always: second launcher icon "AHbsolute ⚙" (opens AHbsoluteStandaloneActivity: avatar shape, etc.) ----
 def patch_manifest():

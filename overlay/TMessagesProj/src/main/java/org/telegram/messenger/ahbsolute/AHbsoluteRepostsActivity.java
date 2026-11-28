@@ -31,6 +31,16 @@ public class AHbsoluteRepostsActivity extends BaseFragment {
 
     private AHbsoluteCardList list;
     private Context ctx;
+    /** 0 = your own reposts, otherwise the reposts an AHbsolute user shared through their personal channel */
+    private final long userId;
+
+    public AHbsoluteRepostsActivity() { this(0); }
+
+    public AHbsoluteRepostsActivity(long userId) {
+        long me = 0;
+        try { me = org.telegram.messenger.UserConfig.getInstance(org.telegram.messenger.UserConfig.selectedAccount).getClientUserId(); } catch (Throwable ignored) { }
+        this.userId = userId == me ? 0 : userId;
+    }
 
     @Override
     public View createView(Context context) {
@@ -64,7 +74,8 @@ public class AHbsoluteRepostsActivity extends BaseFragment {
         Context c = ctx;
         list.removeAllViews();
         list.gap(12);
-        ArrayList<AHbsoluteReposts.Item> items = AHbsoluteReposts.list();
+        final boolean mine = userId == 0;
+        ArrayList<AHbsoluteReposts.Item> items = mine ? AHbsoluteReposts.list() : AHbsoluteShare.reposts(userId);
         if (items.isEmpty()) {
             TextView empty = new TextView(c);
             empty.setText(t("Здесь будут ваши репосты.\n\nЗажмите пост в любом канале и нажмите «Репост».",
@@ -77,7 +88,7 @@ public class AHbsoluteRepostsActivity extends BaseFragment {
             return;
         }
         HeaderCell h = new HeaderCell(c);
-        h.setText(t("Мои репосты", "My reposts") + " · " + items.size());
+        h.setText((mine ? t("Мои репосты", "My reposts") : t("Репосты", "Reposts")) + " · " + items.size());
         list.addCard(h, -2);
         for (int i = 0; i < items.size(); i++) {
             final AHbsoluteReposts.Item it = items.get(i);
@@ -102,7 +113,7 @@ public class AHbsoluteRepostsActivity extends BaseFragment {
             top.addView(date);
             row.addView(top);
             TextView text = new TextView(c);
-            text.setText(it.text);
+            text.setText(it.priv ? "🔒 " + it.text : it.text);
             text.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
             text.setMaxLines(3);
             text.setEllipsize(TextUtils.TruncateAt.END);
@@ -110,7 +121,7 @@ public class AHbsoluteRepostsActivity extends BaseFragment {
             text.setPadding(0, AndroidUtilities.dp(3), 0, 0);
             row.addView(text);
             row.setOnClickListener(v -> open(it));
-            row.setOnLongClickListener(v -> {
+            if (mine) row.setOnLongClickListener(v -> {
                 try {
                     new AlertDialog.Builder(c)
                             .setTitle(t("Убрать репост?", "Remove repost?"))
@@ -127,8 +138,10 @@ public class AHbsoluteRepostsActivity extends BaseFragment {
             list.addCard(row, -2);
         }
         TextInfoPrivacyCell info = new TextInfoPrivacyCell(c);
-        info.setText(t("Нажмите — откроется пост в канале. Удерживайте — убрать из репостов. Репосты видны в вашем профиле в AHbsolute.",
-                "Tap to open the post in its channel. Hold to remove. Reposts are shown on your profile in AHbsolute."));
+        info.setText(mine
+                ? t("Нажмите — откроется пост. Удерживайте — убрать. Репосты постов из каналов видят пользователи AHbsolute (если включено «Показывать мой профиль пользователям AHbsolute»). Репосты обычных сообщений (🔒) не видит никто, кроме вас.",
+                    "Tap to open the post. Hold to remove. Reposts of channel posts are seen by AHbsolute users (if \"Show my profile to AHbsolute users\" is on). Reposts of ordinary messages (🔒) are seen by nobody but you.")
+                : t("Репосты этого пользователя AHbsolute. Нажмите — откроется пост.", "Reposts of this AHbsolute user. Tap to open the post."));
         list.addPlain(info);
     }
 

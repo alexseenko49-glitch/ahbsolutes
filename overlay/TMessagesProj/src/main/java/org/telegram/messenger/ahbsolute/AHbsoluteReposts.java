@@ -32,6 +32,8 @@ public class AHbsoluteReposts {
         public String text;
         public int date;
         public long added;
+        /** a repost of an ordinary message: never shown to anybody else */
+        public boolean priv;
     }
 
     private static SharedPreferences sp() {
@@ -42,15 +44,18 @@ public class AHbsoluteReposts {
 
     public static String label() { return t("Репост", "Repost"); }
 
-    /** called while the message menu is being built */
+    /** called while the message menu is being built: channel posts and ordinary messages */
     public static boolean canRepost(MessageObject m, TLRPC.Chat chat) {
         try {
-            if (!enabled() || m == null || chat == null || m.getId() <= 0 || m.isSponsored()) return false;
-            if (m.messageOwner == null || m.messageOwner.action != null) return false;
-            return ChatObject.isChannelAndNotMegaGroup(chat);
+            if (!enabled() || m == null || m.getId() <= 0 || m.isSponsored()) return false;
+            return m.messageOwner != null && m.messageOwner.action == null;
         } catch (Throwable e) {
             return false;
         }
+    }
+
+    static boolean isChannelPost(TLRPC.Chat chat) {
+        try { return chat != null && ChatObject.isChannelAndNotMegaGroup(chat); } catch (Throwable e) { return false; }
     }
 
     public static ArrayList<Item> list() {
@@ -66,6 +71,7 @@ public class AHbsoluteReposts {
                 it.text = o.optString("x", "");
                 it.date = o.optInt("dt");
                 it.added = o.optLong("a");
+                it.priv = o.optBoolean("p", false);
                 out.add(it);
             }
         } catch (Throwable ignored) { }
@@ -80,7 +86,7 @@ public class AHbsoluteReposts {
             for (Item it : items) {
                 JSONObject o = new JSONObject();
                 o.put("d", it.dialogId); o.put("m", it.messageId); o.put("t", it.title);
-                o.put("x", it.text); o.put("dt", it.date); o.put("a", it.added);
+                o.put("x", it.text); o.put("dt", it.date); o.put("a", it.added); o.put("p", it.priv);
                 a.put(o);
             }
             sp().edit().putString("list", a.toString()).apply();
@@ -108,7 +114,14 @@ public class AHbsoluteReposts {
             Item it = new Item();
             it.dialogId = did;
             it.messageId = mid;
-            it.title = chat != null && chat.title != null ? chat.title : "";
+            it.priv = !isChannelPost(chat);
+            if (chat != null && chat.title != null) it.title = chat.title;
+            else {
+                try {
+                    org.telegram.tgnet.TLRPC.User u = org.telegram.messenger.MessagesController.getInstance(org.telegram.messenger.UserConfig.selectedAccount).getUser(did);
+                    it.title = u == null ? "" : org.telegram.messenger.UserObject.getUserName(u);
+                } catch (Throwable e) { it.title = ""; }
+            }
             CharSequence txt = m.messageText;
             if ((txt == null || txt.length() == 0) && m.caption != null) txt = m.caption;
             String s = txt == null ? "" : txt.toString().replace('\n', ' ').trim();
@@ -119,7 +132,12 @@ public class AHbsoluteReposts {
             items.add(0, it);
             while (items.size() > MAX) items.remove(items.size() - 1);
             save(items);
-            toast(ctx, t("Репост добавлен в ваш профиль", "Reposted to your profile"));
+            if (it.priv) {
+                toast(ctx, t("Репост сохранён. Репосты сообщений не видит никто, кроме вас", "Saved. Reposts of messages are seen by nobody but you"));
+            } else {
+                toast(ctx, t("Репост добавлен в ваш профиль", "Reposted to your profile"));
+                AHbsoluteShare.publishSoon();
+            }
         } catch (Throwable e) {
             toast(ctx, t("Не удалось сделать репост: ", "Could not repost: ") + e);
         }
@@ -131,6 +149,7 @@ public class AHbsoluteReposts {
             if (items.get(i).dialogId == dialogId && items.get(i).messageId == messageId) items.remove(i);
         }
         save(items);
+        AHbsoluteShare.publishSoon();
     }
 
     private static void toast(Context c, String s) {
@@ -140,4 +159,21 @@ public class AHbsoluteReposts {
     /** ProfileActivity row text */
     public static String rowTitle() { return t("Репосты", "Reposts"); }
     public static String rowValue() { int n = count(); return n == 0 ? "" : String.valueOf(n); }
+
+    /** ProfileActivity: the row is shown on your own profile and on profiles of AHbsolute users that shared reposts */
+    public static boolean showRow(long userId) {
+        try {
+            long me = org.telegram.messenger.UserConfig.getInstance(org.telegram.messenger.UserConfig.selectedAccount).getClientUserId();
+            if (userId == me) return enabled();
+            return !AHbsoluteShare.reposts(userId).isEmpty();
+        } catch (Throwable e) { return false; }
+    }
+
+    public static String rowValue(long userId) {
+        try {
+            long me = org.telegram.messenger.UserConfig.getInstance(org.telegram.messenger.UserConfig.selectedAccount).getClientUserId();
+            int n = userId == me ? count() : AHbsoluteShare.reposts(userId).size();
+            return n == 0 ? "" : String.valueOf(n);
+        } catch (Throwable e) { return ""; }
+    }
 }

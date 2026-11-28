@@ -29,9 +29,9 @@ public class AHbsoluteProfile {
     /* ------------------------------------------------------------ settings ------------------------------------------------------------ */
 
     public static String wallpaper() { return AHbsoluteUi.getStr("prof_wp", AHbsoluteBanner.OFF); }
-    public static void setWallpaper(String id) { AHbsoluteUi.putStr("prof_wp", id); invalidate(); }
+    public static void setWallpaper(String id) { AHbsoluteUi.putStr("prof_wp", id); invalidate(); AHbsoluteShare.publishSoon(); }
     public static boolean glassOn() { return "1".equals(AHbsoluteUi.getStr("prof_glass", "0")); }
-    public static void setGlass(boolean v) { AHbsoluteUi.putStr("prof_glass", v ? "1" : "0"); }
+    public static void setGlass(boolean v) { AHbsoluteUi.putStr("prof_glass", v ? "1" : "0"); AHbsoluteShare.publishSoon(); }
     /** opacity of the glass cards, % */
     public static int glassOpacity() { return AHbsoluteUi.getInt("prof_glass_op", 62); }
     /** 0 = sharp, 1..3 = blur strength */
@@ -182,27 +182,81 @@ public class AHbsoluteProfile {
         int blur = Math.max(0, Math.min(3, wallpaperBlur()));
         String key = id + "/" + blur;
         if (key.equals(cachedKey) && cached != null) return cached;
-        Bitmap b = AHbsoluteBanner.load(c, id, AHbsoluteBanner.isUser(id) ? 1 : 2);
-        if (b != null && blur > 0) {
-            int f = blur == 1 ? 6 : blur == 2 ? 12 : 22;
-            int w = Math.max(8, b.getWidth() / f), h = Math.max(8, b.getHeight() / f);
-            Bitmap small = Bitmap.createScaledBitmap(b, w, h, true);
-            Bitmap smooth = Bitmap.createScaledBitmap(small, Math.max(16, b.getWidth() / 3), Math.max(16, b.getHeight() / 3), true);
-            if (small != smooth) small.recycle();
-            b.recycle();
-            b = smooth;
-        }
+        Bitmap b = blurred(AHbsoluteBanner.load(c, id, AHbsoluteBanner.isUser(id) ? 1 : 2), blur);
         cached = b;
         cachedKey = key;
         return b;
     }
 
+    /** soft blur by down- and up-scaling; blur 0 returns the picture as it is */
+    public static Bitmap blurred(Bitmap b, int blur) {
+        if (b == null || blur <= 0) return b;
+        try {
+            int f = blur == 1 ? 6 : blur == 2 ? 12 : 22;
+            int w = Math.max(8, b.getWidth() / f), h = Math.max(8, b.getHeight() / f);
+            Bitmap small = Bitmap.createScaledBitmap(b, w, h, true);
+            Bitmap smooth = Bitmap.createScaledBitmap(small, Math.max(16, b.getWidth() / 3), Math.max(16, b.getHeight() / 3), true);
+            if (small != smooth) small.recycle();
+            return smooth;
+        } catch (Throwable e) { return b; }
+    }
+
+    /** wallpaper of the profile that is open: yours, or the one an AHbsolute user shared */
+    static Bitmap bitmapFor(Context c, long userId, long chatId) {
+        if (chatId == 0 && userId != 0) {
+            Bitmap r = AHbsoluteShare.wallBitmap(userId);
+            if (r != null) return r;
+        }
+        return appliesTo(userId, chatId) ? bitmap(c) : null;
+    }
+
     public static boolean glassFor(long userId, long chatId) {
-        try { return glassOn() && appliesTo(userId, chatId); } catch (Throwable e) { return false; }
+        try {
+            if (chatId == 0 && AHbsoluteShare.wallBitmap(userId) != null) return AHbsoluteShare.glass(userId);
+            return glassOn() && appliesTo(userId, chatId);
+        } catch (Throwable e) { return false; }
     }
 
     public static boolean wallpaperFor(long userId, long chatId) {
-        try { return resolve(wallpaper()) != null && appliesTo(userId, chatId); } catch (Throwable e) { return false; }
+        try {
+            if (chatId == 0 && AHbsoluteShare.wallBitmap(userId) != null) return true;
+            return resolve(wallpaper()) != null && appliesTo(userId, chatId);
+        } catch (Throwable e) { return false; }
+    }
+
+    /**
+     * ProfileActivity.createView(): sets up wallpaper / glass and asks for the AHbsolute card of this user
+     * (personal channel). When it arrives the profile is rebuilt: wallpaper, glass, banner and the "Репосты" row appear.
+     */
+    public static void onProfile(final Object fragment, final Object listView, final long userId, final long chatId) {
+        setupList(listView, userId, chatId);
+        if (chatId != 0 || userId == 0) return;
+        final java.lang.ref.WeakReference<Object> fr = new java.lang.ref.WeakReference<>(fragment);
+        final java.lang.ref.WeakReference<Object> lr = new java.lang.ref.WeakReference<>(listView);
+        AHbsoluteShare.request(userId, () -> {
+            Object f = fr.get(), l = lr.get();
+            if (f == null || !(l instanceof View)) return;
+            try {
+                setupList(l, userId, chatId);
+                if (wallpaperFor(userId, chatId)) {
+                    java.lang.reflect.Field tv = findField(f.getClass(), "topView");
+                    Object top = tv == null ? null : tv.get(f);
+                    if (top instanceof View) ((View) top).setBackgroundColor(Color.TRANSPARENT);
+                }
+                java.lang.reflect.Method m = null;
+                for (Class<?> k = f.getClass(); k != null && m == null; k = k.getSuperclass()) {
+                    try { m = k.getDeclaredMethod("updateRowsIds"); } catch (Throwable ignored) { }
+                }
+                if (m != null) { m.setAccessible(true); m.invoke(f); }
+                Object ad = l.getClass().getMethod("getAdapter").invoke(l);
+                if (ad != null) ad.getClass().getMethod("notifyDataSetChanged").invoke(ad);
+                ((View) l).invalidate();
+                View root = ((View) l).getRootView();
+                if (root != null) root.invalidate();
+            } catch (Throwable e) {
+                AHbsoluteUi.diag("d_share", "profile refresh: " + e);
+            }
+        });
     }
 
     private static final java.util.WeakHashMap<View, Boolean> wallLists = new java.util.WeakHashMap<>();
@@ -251,7 +305,7 @@ public class AHbsoluteProfile {
     public static void drawWallpaper(Canvas canvas, View view, long userId, long chatId) {
         try {
             if (!wallpaperFor(userId, chatId)) return;
-            Bitmap b = bitmap(view.getContext());
+            Bitmap b = bitmapFor(view.getContext(), userId, chatId);
             if (b == null) return;
             drawCover(canvas, b, view.getWidth(), view.getHeight());
         } catch (Throwable ignored) { }

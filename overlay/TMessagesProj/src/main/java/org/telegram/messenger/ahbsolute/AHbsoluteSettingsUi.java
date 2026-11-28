@@ -447,9 +447,17 @@ public class AHbsoluteSettingsUi {
             choice(c, list, t("Скругление карточек", "Card corners"), "chat_radius", pct(10, 14, 18, 20, 24),
                     new String[]{"10 dp", "14 dp", "18 dp", "20 dp", "24 dp"}, "18", true, host);
         }
-        check(c, list, t("Обои за чатами (стекло)", "Wallpaper behind chats (glass)"), AHbsoluteUi.getBool("mainwall"), false,
+        check(c, list, t("Обои за чатами (стекло)", "Wallpaper behind chats (glass)"), AHbsoluteUi.getBool("mainwall"), true,
                 () -> { AHbsoluteUi.toggle(c, "mainwall"); host.rebuild(); });
-        info(c, list, t("Обои за чатами берутся из «Обоев профиля». С ними карточки чатов становятся стеклянными. Изменения видны при следующем открытии списка чатов.",
+        uiCheck(c, list, t("Перемещать любые чаты", "Move any chat"), "chatmove", AHbsoluteOrder.count() > 0);
+        if (AHbsoluteOrder.count() > 0) {
+            TextSettingsCell resetOrder = new TextSettingsCell(c);
+            resetOrder.setTextAndValue(t("Сбросить порядок чатов", "Reset chat order"), String.valueOf(AHbsoluteOrder.count()), false);
+            sel(resetOrder);
+            resetOrder.setOnClickListener(v -> { AHbsoluteOrder.reset(); host.rebuild(); });
+            list.addCard(resetOrder, -2);
+        }
+        info(c, list, t("Перемещение: зажмите чат (он выделится), потом зажмите ещё раз и тяните вверх или вниз — он останется там. Обои за чатами берутся из «Обоев профиля». С ними карточки чатов становятся стеклянными. Изменения видны при следующем открытии списка чатов.",
                 "The wallpaper behind the chats is the \"Profile wallpaper\". With it the chat cards turn into glass. Changes show the next time the chat list is opened."));
 
         // ---------- messages ----------
@@ -459,9 +467,12 @@ public class AHbsoluteSettingsUi {
         if (AHbsoluteUi.getBool("msgglass")) {
             choice(c, list, t("Плотность стекла", "Glass density"), "msgglass_op", pct(40, 52, 62, 72, 85), pctNames(null, 40, 52, 62, 72, 85), "62", true, host);
         }
-        uiCheck(c, list, t("Падающие буквы при удалении", "Falling letters when erasing"), "textfall", false);
+        uiCheck(c, list, t("Падающие буквы при удалении", "Falling letters when erasing"), "textfall", true);
+        uiCheck(c, list, t("Экстремальное удаление", "Extreme delete"), "erase", false);
         info(c, list, t("Liquid Glass: сообщения становятся каплями стекла, сквозь них видны обои. Падающие буквы: стёртые буквы выпрыгивают из поля ввода, падают на сообщения или на чат и исчезают за 2 секунды.",
                 "Liquid Glass: messages become drops of glass with the wallpaper showing through. Falling letters: erased letters jump out of the input field, land on the messages or the chat and fade within 2 seconds."));
+        info(c, list, t("Экстремальное удаление: нажмите на своё сообщение → «Экстремальное удаление». Без вопросов оно удаляется у всех на сервере и из памяти телефона — в чате не остаётся даже следа. Скриншоты, уже показанные уведомления и приложения, которые сами копируют сообщения, стереть невозможно.",
+                "Extreme delete: tap your message → \"Extreme delete\". Without questions it is deleted for everyone on the server and from this phone — not even a trace stays in the chat. Screenshots, notifications already shown and apps that copy messages themselves cannot be erased."));
 
         // ---------- banner ----------
         header(c, list, t("Баннер профиля", "Profile banner"));
@@ -609,6 +620,76 @@ public class AHbsoluteSettingsUi {
         }
         info(c, list, t("Тема заменяет светлую/тёмную тему Telegram. Автосмена ночной темы отключается.",
                 "The theme replaces Telegram's light/dark theme. Automatic night mode is turned off."));
+
+        // ---------- visible to AHbsolute users ----------
+        header(c, list, t("Видно пользователям AHbsolute", "Visible to AHbsolute users"));
+        check(c, list, t("Показывать мой профиль пользователям AHbsolute", "Show my profile to AHbsolute users"), AHbsoluteShare.enabled(), AHbsoluteShare.enabled(),
+                () -> {
+                    boolean on = !AHbsoluteShare.enabled();
+                    AHbsoluteShare.setEnabled(on);
+                    if (on) AHbsoluteShare.publish(err -> Toast.makeText(c, err == null ? t("Профиль опубликован в личном канале", "Profile published to your personal channel") : err, Toast.LENGTH_LONG).show());
+                    host.rebuild();
+                });
+        if (AHbsoluteShare.enabled()) {
+            TextSettingsCell pub = new TextSettingsCell(c);
+            pub.setText(t("Обновить сейчас", "Update now"), false);
+            sel(pub);
+            pub.setOnClickListener(v -> AHbsoluteShare.publish(err -> Toast.makeText(c, err == null ? t("Профиль обновлён", "Profile updated") : err, Toast.LENGTH_LONG).show()));
+            list.addCard(pub, -2);
+        }
+        info(c, list, t("Ваш баннер, обои, стекло и репосты постов увидят пользователи AHbsolute, открыв ваш профиль. Нужен личный канал (свой профиль → «Изменить» → «Личный канал»): AHbsolute публикует туда пост «Мой профиль в AHbsolute» и картинки. В обычном Telegram это просто посты вашего канала. Репосты обычных сообщений не публикуются никогда.",
+                "AHbsolute users who open your profile will see your banner, wallpaper, glass and reposts of posts. A personal channel is needed (your profile → Edit → Personal channel): AHbsolute posts \"My profile in AHbsolute\" and the pictures there. In regular Telegram these are just posts of your channel. Reposts of ordinary messages are never published."));
+
+        // ---------- settings transfer ----------
+        header(c, list, t("Перенос настроек", "Settings transfer"));
+        TextSettingsCell copyCode = new TextSettingsCell(c);
+        copyCode.setText(t("Скопировать настройки", "Copy settings"), true);
+        sel(copyCode);
+        copyCode.setOnClickListener(v -> {
+            try {
+                AHbsoluteSettingsCode.copy(c);
+                Toast.makeText(c, t("Код настроек скопирован. Вставьте его в «Ввод настроек», чтобы вернуть всё как сейчас.", "Settings code copied. Paste it into \"Enter settings\" to get everything back."), Toast.LENGTH_LONG).show();
+            } catch (Throwable e) {
+                Toast.makeText(c, String.valueOf(e), Toast.LENGTH_LONG).show();
+            }
+        });
+        list.addCard(copyCode, -2);
+        TextSettingsCell enterCode = new TextSettingsCell(c);
+        enterCode.setText(t("Ввод настроек", "Enter settings"), false);
+        sel(enterCode);
+        enterCode.setOnClickListener(v -> {
+            final android.widget.EditText et = new android.widget.EditText(c);
+            et.setHint(t("Вставьте код настроек", "Paste the settings code"));
+            et.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+            et.setMaxLines(4);
+            et.setTextColor(color(Theme.key_windowBackgroundWhiteBlackText));
+            et.setHintTextColor(color(Theme.key_windowBackgroundWhiteGrayText));
+            android.widget.FrameLayout box = new android.widget.FrameLayout(c);
+            box.setPadding(dp(24), dp(8), dp(24), 0);
+            box.addView(et);
+            try {
+                android.content.ClipboardManager cm = (android.content.ClipboardManager) c.getSystemService(Context.CLIPBOARD_SERVICE);
+                CharSequence clip = cm.hasPrimaryClip() && cm.getPrimaryClip().getItemCount() > 0 ? cm.getPrimaryClip().getItemAt(0).getText() : null;
+                if (clip != null && clip.toString().matches("\\d{20,}")) et.setText(clip);
+            } catch (Throwable ignored) { }
+            Runnable apply = () -> {
+                String err = AHbsoluteSettingsCode.importCode(c, et.getText().toString());
+                Toast.makeText(c, err == null ? t("Настройки восстановлены", "Settings restored") : err, Toast.LENGTH_LONG).show();
+                host.rebuild();
+            };
+            try {
+                new AlertDialog.Builder(c).setTitle(t("Ввод настроек", "Enter settings")).setView(box)
+                        .setPositiveButton(t("Применить", "Apply"), (d, w) -> apply.run())
+                        .setNegativeButton(t("Отмена", "Cancel"), null).show();
+            } catch (Throwable e) {
+                new android.app.AlertDialog.Builder(c).setTitle(t("Ввод настроек", "Enter settings")).setView(box)
+                        .setPositiveButton(t("Применить", "Apply"), (d, w) -> apply.run())
+                        .setNegativeButton(t("Отмена", "Cancel"), null).show();
+            }
+        });
+        list.addCard(enterCode, -2);
+        info(c, list, t("«Скопировать настройки» кладёт в буфер обмена число — это все настройки AHbsolute. Введите его в «Ввод настроек» (на этом или другом телефоне) — и всё станет как было. Свои картинки из галереи в число не входят.",
+                "\"Copy settings\" puts a number into the clipboard — that is all AHbsolute settings. Enter it in \"Enter settings\" (on this or another phone) and everything is back as it was. Your own gallery pictures are not part of the number."));
 
         // ---------- storage ----------
         header(c, list, t("Память", "Storage"));
