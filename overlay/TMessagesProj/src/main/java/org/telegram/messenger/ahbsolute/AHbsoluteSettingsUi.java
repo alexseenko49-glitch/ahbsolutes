@@ -52,6 +52,8 @@ public class AHbsoluteSettingsUi {
         Runnable interfaceEditor();
         /** null when the reposts screen cannot be opened from this host */
         Runnable reposts();
+        /** the version easter egg */
+        void openVersion();
         void rebuild();
     }
 
@@ -255,7 +257,7 @@ public class AHbsoluteSettingsUi {
         }
         @Override protected void onDraw(Canvas canvas) {
             Context c = getContext();
-            int w = getWidth(), h = getHeight(), head = dp(176);
+            int w = getWidth(), h = getHeight(), head = AHbsoluteProfile.besideActive() ? dp(132) : dp(176);
             boolean wall = !AHbsoluteBanner.OFF.equals(AHbsoluteProfile.wallpaper());
             boolean glass = AHbsoluteProfile.glassOn();
             // page background
@@ -291,7 +293,7 @@ public class AHbsoluteSettingsUi {
             canvas.drawPath(AHbsolute.cachedPath(AHbsolute.getMyShape(), size, size), av);
             canvas.restore();
             // name + status: with the avatar / next to it / fixed side
-            boolean beside = AHbsoluteProfile.nameAlign() == AHbsoluteProfile.POS_BESIDE;
+            boolean beside = AHbsoluteProfile.besideActive();
             int al = beside ? (pos == AHbsoluteProfile.POS_RIGHT ? AHbsoluteProfile.POS_RIGHT : AHbsoluteProfile.POS_LEFT) : AHbsoluteProfile.effectiveNameAlign();
             Paint.Align align = al == AHbsoluteProfile.POS_LEFT ? Paint.Align.LEFT : al == AHbsoluteProfile.POS_RIGHT ? Paint.Align.RIGHT : Paint.Align.CENTER;
             float tx;
@@ -420,6 +422,21 @@ public class AHbsoluteSettingsUi {
         info(c, list, t("Обои, стекло и расположение аватара видите вы в AHbsolute. Выключено «Во всех профилях» — меняется только ваш профиль.",
                 "Wallpaper, glass and avatar layout are shown in your AHbsolute. With \"On every profile\" off only your own profile changes."));
 
+        // ---------- customization: top bar ----------
+        header(c, list, t("Кастомизация", "Customization"));
+        check(c, list, t("Компактная верхняя панель", "Compact top bar"), AHbsoluteUi.getBool("topbar"), AHbsoluteUi.getBool("topbar"),
+                () -> { AHbsoluteUi.toggle(c, "topbar"); host.rebuild(); });
+        if (AHbsoluteUi.getBool("topbar")) {
+            choice(c, list, t("Размер панели", "Bar size"), "bar_size", pct(100, 96, 92, 88, 84),
+                    new String[]{t("Обычный", "Normal"), "96%", "92%", "88%", "84%"}, "92", true, host);
+            choice(c, list, t("Скругление краёв", "Corner rounding"), "bar_radius", pct(0, 12, 18, 24, 99),
+                    new String[]{t("Без скругления", "Square"), "12 dp", "18 dp", "24 dp", t("Капсула", "Capsule")}, "24", true, host);
+            choice(c, list, t("Отступы по краям", "Side margins"), "bar_margin", pct(0, 6, 10, 16, 24),
+                    new String[]{t("Нет", "None"), "6 dp", "10 dp", "16 dp", "24 dp"}, "10", false, host);
+        }
+        info(c, list, t("Верхняя панель главного экрана (надпись AHbsolute, поиск, меню) становится меньше и стоит в скруглённой капсуле. С обоями за чатами капсула стеклянная.",
+                "The top bar of the main screen (AHbsolute title, search, menu) gets smaller and sits in a rounded capsule. With a wallpaper behind the chats the capsule is glass."));
+
         // ---------- main screen ----------
         header(c, list, t("Главный экран", "Main screen"));
         choice(c, list, t("Расстояние между чатами", "Space between chats"), "chat_gap", pct(0, 2, 4, 6, 8, 12, 16),
@@ -437,13 +454,14 @@ public class AHbsoluteSettingsUi {
 
         // ---------- messages ----------
         header(c, list, t("Сообщения", "Messages"));
-        check(c, list, "Liquid Glass", AHbsoluteUi.getBool("msgglass"), AHbsoluteUi.getBool("msgglass"),
+        check(c, list, "Liquid Glass", AHbsoluteUi.getBool("msgglass"), true,
                 () -> { AHbsoluteUi.toggle(c, "msgglass"); host.rebuild(); });
         if (AHbsoluteUi.getBool("msgglass")) {
-            choice(c, list, t("Плотность стекла", "Glass density"), "msgglass_op", pct(40, 52, 62, 72, 85), pctNames(null, 40, 52, 62, 72, 85), "62", false, host);
+            choice(c, list, t("Плотность стекла", "Glass density"), "msgglass_op", pct(40, 52, 62, 72, 85), pctNames(null, 40, 52, 62, 72, 85), "62", true, host);
         }
-        info(c, list, t("Сообщения становятся каплями стекла: полупрозрачные, с бликом сверху и светлой кромкой, сквозь них видны обои чата.",
-                "Messages become drops of glass: translucent, with a highlight on top and a light rim; the chat wallpaper shows through."));
+        uiCheck(c, list, t("Падающие буквы при удалении", "Falling letters when erasing"), "textfall", false);
+        info(c, list, t("Liquid Glass: сообщения становятся каплями стекла, сквозь них видны обои. Падающие буквы: стёртые буквы выпрыгивают из поля ввода, падают на сообщения или на чат и исчезают за 2 секунды.",
+                "Liquid Glass: messages become drops of glass with the wallpaper showing through. Falling letters: erased letters jump out of the input field, land on the messages or the chat and fade within 2 seconds."));
 
         // ---------- banner ----------
         header(c, list, t("Баннер профиля", "Profile banner"));
@@ -559,7 +577,6 @@ public class AHbsoluteSettingsUi {
             uiCheck(c, list, t("Стеклянная нижняя панель", "Glass bottom panel"), "glass", true);
             uiCheck(c, list, t("Обои чата по теме", "Chat wallpaper from theme"), "wp", true);
             uiCheck(c, list, t("Дрожь чата при удержании", "Chat shakes while held"), "shake", true);
-            uiCheck(c, list, t("Компактная верхняя панель", "Compact rounded top bar"), "topbar", true);
             uiCheck(c, list, t("Анимация открытия чата", "Chat opening animation"), "anim", true);
             uiCheck(c, list, t("Двойное нажатие — быстрый просмотр", "Double tap to peek"), "peek", true);
             uiCheck(c, list, t("Изменять сообщения (только у меня)", "Edit messages (only for me)"), "localedit", true);
@@ -603,12 +620,25 @@ public class AHbsoluteSettingsUi {
         TextSettingsCell diag = new TextSettingsCell(c);
         diag.setText(t("Диагностика", "Diagnostics"), false);
         sel(diag);
-        diag.setOnClickListener(v -> {
+        // one tap: diagnostics; two quick taps: the version easter egg
+        final Runnable showDiag = () -> {
             try {
                 new AlertDialog.Builder(c).setTitle(t("Диагностика", "Diagnostics")).setMessage(AHbsoluteUi.diagText(c))
                         .setPositiveButton("OK", null).show();
             } catch (Throwable e) {
                 Toast.makeText(c, AHbsoluteUi.diagText(c), Toast.LENGTH_LONG).show();
+            }
+        };
+        final long[] lastTap = {0};
+        diag.setOnClickListener(v -> {
+            long now = android.os.SystemClock.uptimeMillis();
+            if (now - lastTap[0] < 350) {
+                lastTap[0] = 0;
+                v.removeCallbacks(showDiag);
+                host.openVersion();
+            } else {
+                lastTap[0] = now;
+                v.postDelayed(showDiag, 360);
             }
         });
         list.addCard(diag, -2);

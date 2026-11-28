@@ -61,6 +61,11 @@ public class AHbsoluteSettingsActivity extends BaseFragment implements AHbsolute
     }
 
     @Override
+    public void openVersion() {
+        presentFragment(new AHbsoluteVersionActivity());
+    }
+
+    @Override
     public Runnable reposts() {
         return () -> presentFragment(new AHbsoluteRepostsActivity());
     }

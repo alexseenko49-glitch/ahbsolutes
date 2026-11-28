@@ -50,6 +50,25 @@ public class AHbsoluteProfile {
         int p = avatarPos();
         return p == POS_CENTER && nameAlign() == POS_BESIDE ? POS_LEFT : p;
     }
+
+    /**
+     * name + status stand next to the avatar: explicitly, or "with the avatar" while the avatar is on a side
+     * (below a side avatar the other half of the header looked empty)
+     */
+    static boolean besideActive() {
+        int al = nameAlign();
+        return al == POS_BESIDE || (al == POS_FOLLOW && avatarPos() != POS_CENTER);
+    }
+
+    /** ProfileActivity.getHeaderOnlyExtraHeight(): with the name next to the avatar the rows below it move up */
+    public static int headerExtra(int def, long userId, long chatId) {
+        try {
+            if (!besideActive() || !appliesTo(userId, chatId)) return def;
+            float k = sizeK(userId, chatId);
+            int freed = AndroidUtilities.dp(54) - Math.max(0, Math.round(AndroidUtilities.dp(96) * (k - 1f)));
+            return def - Math.max(0, freed);
+        } catch (Throwable e) { return def; }
+    }
     public static int avatarSize() { return AHbsoluteUi.getInt("prof_av_size", 100); }
     public static int nameSize() { return AHbsoluteUi.getInt("prof_name_size", 100); }
     public static boolean everywhere() { return "all".equals(AHbsoluteUi.getStr("prof_scope", "me")); }
@@ -93,7 +112,7 @@ public class AHbsoluteProfile {
             if (viewportWidth <= 0 || !appliesTo(userId, chatId)) return centered;
             int al = nameAlign();
             float target;
-            if (al == POS_BESIDE && !Float.isNaN(avX)) {
+            if (besideActive() && !Float.isNaN(avX)) {
                 boolean right = effectiveAvatarPos() == POS_RIGHT;
                 target = right ? avX - AndroidUtilities.dp(16) - leftMargin - textW : avX + avW + AndroidUtilities.dp(16) - leftMargin;
             } else {
@@ -109,7 +128,7 @@ public class AHbsoluteProfile {
     /** vertical shift of name and status for "beside the avatar": centred on the avatar instead of below it */
     public static float besideShift(float avatarTop, float avatarH, float nameY, float diff, long userId, long chatId) {
         try {
-            if (nameAlign() != POS_BESIDE || !appliesTo(userId, chatId)) return 0;
+            if (!besideActive() || !appliesTo(userId, chatId)) return 0;
             float target = avatarTop + avatarH / 2f - AndroidUtilities.dp(22);
             return (target - nameY) * clamp01(diff);
         } catch (Throwable e) { return 0; }

@@ -104,6 +104,9 @@ public class AHbsoluteChats extends RecyclerView.ItemDecoration {
             // page behind the chats: the design wallpaper (fixed, the cards slide over it) or the grey page colour
             Bitmap b = wall ? AHbsoluteProfile.bitmap(parent.getContext()) : null;
             if (b != null) {
+                parent.getLocationOnScreen(tmpLoc);
+                wallRect[0] = tmpLoc[0]; wallRect[1] = tmpLoc[1]; wallRect[2] = parent.getWidth(); wallRect[3] = parent.getHeight();
+                wallKnown = true;
                 AHbsoluteProfile.drawCover(canvas, b, parent.getWidth(), parent.getHeight());
             } else if (cards) {
                 canvas.drawColor(Theme.getColor(Theme.key_windowBackgroundGray));
@@ -124,6 +127,112 @@ public class AHbsoluteChats extends RecyclerView.ItemDecoration {
                 }
             }
         } catch (Throwable ignored) { }
+    }
+
+    /* ------------------------------------------------------------ top bar (DialogsActivity header) ------------------------------------------------------------ */
+
+    private static final int[] wallRect = new int[4];
+    private static boolean wallKnown;
+    private final int[] tmpLoc = new int[2];
+    private static final int[] hostLoc = new int[2];
+    private static final Paint pill = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private static final Paint pillStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private static final RectF pillRect = new RectF();
+
+    public static boolean compactBar() { return AHbsoluteUi.getBool("topbar"); }
+    /** size of the bar, % */
+    public static int barSize() { return AHbsoluteUi.getInt("bar_size", 92); }
+    /** corner radius, dp */
+    public static int barRadius() { return AHbsoluteUi.getInt("bar_radius", 24); }
+    /** side margin, dp */
+    public static int barMargin() { return AHbsoluteUi.getInt("bar_margin", 10); }
+
+    private static final Paint fadeMask = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private static float fadeMaskStart = -1, fadeMaskH = -1;
+
+    static {
+        fadeMask.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN));
+    }
+
+    /** the wallpaper exactly where the chat list draws it (fixed to the screen) */
+    private static void drawWallAligned(Canvas canvas, View host, Bitmap b) {
+        host.getLocationOnScreen(hostLoc);
+        int lx = wallKnown ? wallRect[0] : hostLoc[0], ly = wallKnown ? wallRect[1] : hostLoc[1];
+        int lw = wallKnown ? wallRect[2] : host.getWidth(), lh = wallKnown ? wallRect[3] : host.getHeight();
+        canvas.save();
+        canvas.translate(lx - hostLoc[0], ly - hostLoc[1]);
+        AHbsoluteProfile.drawCover(canvas, b, lw, lh);
+        canvas.restore();
+    }
+
+    /**
+     * DialogsActivityTopBubblesFadeView: Telegram fills the top of the chat list with the theme colour as soon as the list
+     * is scrolled (that made the header dark). With "wallpaper behind chats" the very same wallpaper is drawn there
+     * instead, so the header matches the wallpaper at any scroll position. Returns false = Telegram draws its fade.
+     */
+    public static boolean drawFade(Canvas canvas, View fade, float fadeStart, float fadeHeight) {
+        try {
+            if (!on() || !mainWallpaper()) return false;
+            Bitmap b = AHbsoluteProfile.bitmap(fade.getContext());
+            if (b == null) return false;
+            float bottom = fadeStart + Math.max(0, fadeHeight);
+            if (bottom <= 0) return true;
+            int save = canvas.saveLayer(0, 0, fade.getWidth(), bottom, null);
+            drawWallAligned(canvas, fade, b);
+            if (fadeHeight > 0) {
+                if (fadeMaskStart != fadeStart || fadeMaskH != fadeHeight) {
+                    fadeMask.setShader(new LinearGradient(0, fadeStart, 0, bottom, 0xFF000000, 0x00000000, Shader.TileMode.CLAMP));
+                    fadeMaskStart = fadeStart;
+                    fadeMaskH = fadeHeight;
+                }
+                canvas.drawRect(0, fadeStart, fade.getWidth(), bottom, fadeMask);
+            }
+            canvas.restoreToCount(save);
+            return true;
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
+    /**
+     * DialogsActivity content view, right before the action bar (title, search, menu) is drawn: with the compact bar the row
+     * gets smaller around its centre and sits in a rounded capsule (glass over the wallpaper). Size, corners and side
+     * margins are set in AHbsolute → Кастомизация.
+     */
+    public static void drawBar(Canvas canvas, View host, View actionBar) {
+        try {
+            if (actionBar == null) return;
+            if (!on() || !compactBar() || actionBar.getVisibility() != View.VISIBLE || actionBar.getHeight() <= 0) { resetBar(actionBar); return; }
+            int sb = actionBar instanceof org.telegram.ui.ActionBar.ActionBar && ((org.telegram.ui.ActionBar.ActionBar) actionBar).getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0;
+            float k = Math.max(70, Math.min(100, barSize())) / 100f;
+            float pivotY = sb + (actionBar.getHeight() - sb) / 2f;
+            if (actionBar.getPivotY() != pivotY) actionBar.setPivotY(pivotY);
+            if (actionBar.getPivotX() != actionBar.getWidth() / 2f) actionBar.setPivotX(actionBar.getWidth() / 2f);
+            if (actionBar.getScaleX() != k) { actionBar.setScaleX(k); actionBar.setScaleY(k); }
+            float rowH = (actionBar.getHeight() - sb) * k;
+            float cy = actionBar.getY() + pivotY;
+            float m = AndroidUtilities.dp(Math.max(0, Math.min(40, barMargin())));
+            pillRect.set(m, cy - rowH / 2f + AndroidUtilities.dp(3), host.getWidth() - m, cy + rowH / 2f - AndroidUtilities.dp(3));
+            float r = Math.min(pillRect.height() / 2f, AndroidUtilities.dp(Math.max(0, barRadius())));
+            int base = Theme.getColor(Theme.key_windowBackgroundWhite);
+            float alpha = actionBar.getAlpha();
+            if (mainWallpaper() && AHbsoluteProfile.bitmap(host.getContext()) != null) {
+                AHbsoluteProfile.drawGlassSection(canvas, pillRect, r, r, alpha, base);
+            } else {
+                pill.setColor(base);
+                pill.setAlpha(Math.round(255 * alpha));
+                pill.setShadowLayer(AndroidUtilities.dp(8), 0, AndroidUtilities.dp(2), 0x22000000);
+                canvas.drawRoundRect(pillRect, r, r, pill);
+                pillStroke.setStyle(Paint.Style.STROKE);
+                pillStroke.setStrokeWidth(Math.max(1f, AndroidUtilities.density * 0.8f));
+                pillStroke.setColor(0x14000000);
+                canvas.drawRoundRect(pillRect, r, r, pillStroke);
+            }
+        } catch (Throwable ignored) { }
+    }
+
+    private static void resetBar(View actionBar) {
+        if (actionBar != null && actionBar.getScaleX() != 1f) { actionBar.setScaleX(1f); actionBar.setScaleY(1f); }
     }
 
     /* ------------------------------------------------------------ top bar title ------------------------------------------------------------ */

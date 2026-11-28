@@ -284,7 +284,7 @@ public class AHbsoluteUi {
         Context c = a.getApplicationContext();
         View bar = findByClass(a.getWindow().getDecorView(), "ActionBar");
         if (bar == null) { diag("d_topbar", "ActionBar not found"); return; }
-        if (topbar(c)) {
+        if (false && topbar(c)) { // the compact bar is now drawn as a pill behind the header (AHbsoluteChats.drawHeader)
             final float d = c.getResources().getDisplayMetrics().density;
             bar.setOutlineProvider(new ViewOutlineProvider() {
                 @Override public void getOutline(View v, Outline o) {

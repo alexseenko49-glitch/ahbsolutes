@@ -95,15 +95,52 @@ public class AHbsoluteAnim {
         }
     }
 
-    public static void onOpened(final ActionBarLayout layout, BaseFragment fragment) {
+    public static void onOpened(final ActionBarLayout layout, final BaseFragment fragment) {
         try {
             opening = false;
             if (peekPending && isChat(fragment)) {
                 peekPending = false;
+                // a short look, then the opening animation plays backwards: the chat shrinks into the dot it came from
                 H.postDelayed(new Runnable() {
-                    @Override public void run() { try { layout.closeLastFragment(true); } catch (Throwable ignored) { } }
-                }, 120);
+                    @Override public void run() { reverseClose(layout, fragment); }
+                }, 380);
             }
         } catch (Throwable ignored) { }
+    }
+
+    private static void reverseClose(final ActionBarLayout layout, final BaseFragment fragment) {
+        final View v = fragment.getFragmentView();
+        final View target = v != null && v.getParent() instanceof View ? (View) v.getParent() : v;
+        if (target == null) {
+            try { layout.closeLastFragment(true); } catch (Throwable ignored) { }
+            return;
+        }
+        try {
+            int[] loc = new int[2];
+            target.getLocationOnScreen(loc);
+            target.setPivotX(firstDownX > 0 ? firstDownX - loc[0] : target.getWidth() / 2f);
+            target.setPivotY(firstDownY > 0 ? firstDownY - loc[1] : target.getHeight() / 2f);
+            android.animation.ValueAnimator va = android.animation.ValueAnimator.ofFloat(1f, 0f);
+            va.setDuration(240);
+            va.setInterpolator(new android.view.animation.AccelerateInterpolator(1.6f));
+            va.addUpdateListener(a -> {
+                float t = (float) a.getAnimatedValue();
+                float sc = 0.02f + 0.98f * t;
+                target.setScaleX(sc);
+                target.setScaleY(sc);
+                target.setAlpha(Math.min(1f, t * 3f));
+            });
+            va.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationEnd(android.animation.Animator animation) {
+                    try { layout.closeLastFragment(false); } catch (Throwable ignored) { }
+                    target.setScaleX(1f);
+                    target.setScaleY(1f);
+                    target.setAlpha(1f);
+                }
+            });
+            va.start();
+        } catch (Throwable e) {
+            try { layout.closeLastFragment(true); } catch (Throwable ignored) { }
+        }
     }
 }

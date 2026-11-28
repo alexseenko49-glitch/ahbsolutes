@@ -29,6 +29,8 @@ import org.telegram.ui.ActionBar.Theme;
 public class AHbsoluteStandaloneActivity extends Activity implements AHbsoluteSettingsUi.Host {
 
     private AHbsoluteCardList content;
+    private View rootView;
+    private boolean versionShown;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -71,6 +73,7 @@ public class AHbsoluteStandaloneActivity extends Activity implements AHbsoluteSe
         sv.addView(content, new FrameLayout.LayoutParams(-1, -2));
         backdrop.addView(sv, new FrameLayout.LayoutParams(-1, -1));
         root.addView(backdrop, new LinearLayout.LayoutParams(-1, 0, 1f));
+        rootView = root;
         setContentView(root);
 
         try {
@@ -116,6 +119,25 @@ public class AHbsoluteStandaloneActivity extends Activity implements AHbsoluteSe
     @Override
     public Runnable interfaceEditor() {
         return null; // the side-menu editor lives inside Telegram: Settings → AHbsolute
+    }
+
+    @Override
+    public void openVersion() {
+        versionShown = true;
+        setContentView(AHbsoluteVersion.build(this, this::closeVersion));
+    }
+
+    private void closeVersion() {
+        if (!versionShown) return;
+        versionShown = false;
+        if (rootView.getParent() instanceof android.view.ViewGroup) ((android.view.ViewGroup) rootView.getParent()).removeView(rootView);
+        setContentView(rootView);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (versionShown) { closeVersion(); return; }
+        super.onBackPressed();
     }
 
     @Override

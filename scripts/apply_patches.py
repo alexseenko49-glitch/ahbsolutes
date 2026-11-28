@@ -5,7 +5,7 @@ Required patches fail loudly (exit 1) so CI never silently builds something half
 import os, re, sys, json
 
 SAFE = "--safe" in sys.argv
-FEATS = {"menu", "avatar", "settings", "title", "streak", "blur", "splash", "anim", "profile", "edit", "pwall", "playout", "repost", "main", "msgglass"}
+FEATS = {"menu", "avatar", "settings", "title", "streak", "blur", "splash", "anim", "profile", "edit", "pwall", "playout", "repost", "main", "msgglass", "fall"}
 for _a in sys.argv[1:]:
     if _a.startswith("--features="):
         FEATS = {x.strip() for x in _a.split("=", 1)[1].split(",") if x.strip()}
@@ -575,7 +575,7 @@ def subs_all(path, rules):
     return t, None
 
 AHP = "org.telegram.messenger.ahbsolute.AHbsoluteProfile"
-pfa_path = one("ProfileActivity.java") if ({"pwall", "playout", "repost", "main", "msgglass"} & FEATS) else None
+pfa_path = one("ProfileActivity.java") if ({"pwall", "playout", "repost", "main", "msgglass", "fall"} & FEATS) else None
 
 # ---- group "pwall": own picture as profile wallpaper + glass profile (ProfileActivity + RecyclerListView) ----
 if "pwall" in FEATS:
@@ -630,6 +630,8 @@ if "playout" in FEATS:
              lambda m: m.group(1) + '\n' + m.group(2) + '{ float ahbS = ' + AHP + '.besideShift((float) Math.floor(endNameY), avatarContainer.getHeight() * avatarContainer.getScaleY(), nameY, diff, userId, chatId); nameY += ahbS; onlineY += ahbS; }', 1, 1),
             (r'(\n(\s*)onlineY = avatarBottom \+ AndroidUtilities\.dp\(24\) \+ \(float\) Math\.floor\(11 \* AndroidUtilities\.density\) \* diff;)',
              lambda m: m.group(1) + '\n' + m.group(2) + '{ float ahbS = ' + AHP + '.besideShift((float) Math.floor(endNameY), AndroidUtilities.dp(42) * scale, nameY, diff, userId, chatId); nameY += ahbS; onlineY += ahbS; }', 0, 1),
+            (r'(private int getHeaderOnlyExtraHeight\(\) \{\s*if \(getActionsExtraHeight\(\) == 0\) \{\s*return )dp\(168f\);(\s*\}\s*return )dp\(152f\);',
+             r'\1' + AHP + r'.headerExtra(dp(168f), userId, chatId);\2' + AHP + r'.headerExtra(dp(152f), userId, chatId);', 1, 1),
             (r'avatarScale = lerp\(intoSize, 96, diff\) / 100f;',
              'avatarScale = lerp(intoSize, 96f * ' + AHP + '.sizeK(userId, chatId), diff) / 100f;', 1, 1),
             (r'(final float nameScale = openAnimationInProgress \? AndroidUtilities\.lerp\(getPreviousHeaderTextScale\(PREVIOUS_HEADER_TITLE\), 1\.12f, diff\) : )1\.0f \+ 0\.12f \* diff;',
@@ -691,7 +693,20 @@ if "main" in FEATS:
         d_new, e1 = subs_all(dca2, [
             (r'ssb\.setSpan\(new ImageSpan\(logoDrawable\), 0, ssb\.length\(\), Spanned\.SPAN_EXCLUSIVE_EXCLUSIVE\);',
              'org.telegram.messenger.ahbsolute.AHbsoluteChats.styleTitle(ssb);', 1, 1),
+            # compact rounded top bar: the capsule is drawn right before the action bar row
+            (r'(private Rect blurBounds = new Rect\(\);\s*@Override\s*protected boolean drawChild\(Canvas canvas, View child, long drawingTime\) \{\s*if \(child == blurredView\) \{\s*return true;\s*\}\s*if \(SizeNotifierFrameLayout\.drawingBlur\) \{\s*return super\.drawChild\(canvas, child, drawingTime\);\s*\})',
+             r'\1\n            if (child == actionBar) org.telegram.messenger.ahbsolute.AHbsoluteChats.drawBar(canvas, this, actionBar);', 0, 1),
         ])
+        fdv = one("DialogsActivityTopBubblesFadeView.java")
+        if fdv and d_new:
+            f_new, e4 = subs_all(fdv, [
+                (r'(protected void onDraw\(@NonNull Canvas canvas\) \{)',
+                 r'\1\n        if (org.telegram.messenger.ahbsolute.AHbsoluteChats.drawFade(canvas, this, fadeStart, fadeHeight)) return;', 1, 1),
+            ])
+            if f_new: write(fdv, f_new); print("ok: main: header fade follows the wallpaper")
+            else: print("WARN: main: header fade not patched:", e4)
+        if d_new and "AHbsoluteChats.drawBar" not in d_new:
+            print("WARN: main: compact bar capsule anchor not found (bar keeps Telegram's look)")
         r_txt = read(rlv3)
         r_new = r_txt
         if "AHbsoluteBlur.attach(this)" not in r_txt and "AHbsoluteChats.attach(this)" not in r_txt:
@@ -729,6 +744,23 @@ if "msgglass" in FEATS:
         else:
             print("WARN: msgglass feature skipped:", e)
             show(mdp, [r'canvas\.drawPath\(path, p\)', r'paint\.getStyle\(\) == Paint\.Style\.FILL'])
+
+# ---- group "fall": falling letters when text is erased (ChatActivityEnterView) ----
+if "fall" in FEATS:
+    caev = one("ChatActivityEnterView.java")
+    if not caev:
+        print("WARN: fall feature skipped: ChatActivityEnterView.java not found")
+    else:
+        c_new, e = subs_all(caev, [
+            (r'(messageEditText\.addTextChangedListener\(new EditTextSuggestionsFix\(\)\);)',
+             r'\1\n        org.telegram.messenger.ahbsolute.AHbsoluteFall.attach(messageEditText);', 1, 1),
+        ])
+        if c_new:
+            write(caev, c_new); features["fall"] = True
+            print("ok: falling letters hooked into the message field")
+        else:
+            print("WARN: fall feature skipped:", e)
+            show(caev, [r'addTextChangedListener'])
 
 # ---- always: second launcher icon "AHbsolute ⚙" (opens AHbsoluteStandaloneActivity: avatar shape, etc.) ----
 def patch_manifest():
