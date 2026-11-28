@@ -19,7 +19,7 @@ import static org.telegram.messenger.ahbsolute.AHbsolute.t;
  */
 public class AHbsoluteDesign {
 
-    private static final String[] UI_KEYS = {"master", "glass", "topbar", "anim", "wp", "msgglass", "chatcards", "mainwall", "textfall"};
+    private static final String[] UI_KEYS = {"master", "glass", "topbar", "anim", "wp", "msgglass", "chatcards", "mainwall", "textfall", "livewall"};
     private static final String[][] STR_KEYS = {
             {"banner", AHbsoluteBanner.OFF}, {"banner_pos", "50"}, {"banner_fade", "40"}, {"banner_dim", "15"}, {"banner_op", "100"},
             {"prof_wp", AHbsoluteBanner.OFF}, {"prof_glass", "0"}, {"prof_glass_op", "62"}, {"prof_wp_blur", "1"}, {"prof_wp_dim", "0"},
@@ -44,8 +44,8 @@ public class AHbsoluteDesign {
     public static String title2() { return "Absolute Design 2"; }
 
     public static String subtitle2() {
-        return t("«Aurora»: мятно-бирюзовая тема с северным сиянием, капсула-панель, крупные стеклянные карточки, аватар слева и имя рядом, Liquid Glass и падающие буквы.",
-                "«Aurora»: mint-teal northern-lights theme, capsule bar, large glass cards, avatar on the left with the name beside it, Liquid Glass and falling letters.");
+        return t("Design 2 «Aurora» — новый интерфейс: живое северное сияние на фоне, по краям стеклянных карточек переливается граница, непрочитанные чаты светятся, чаты появляются каскадом, бирюзовая кромка у ваших сообщений, капсула-панель, аватар слева с именем рядом.",
+                "Design 2 «Aurora» — a new interface: living northern lights in the background, flowing aurora edges on every glass card, glowing unread chats, chats float in one by one, a teal rim on your messages, capsule bar, avatar on the left with the name beside it.");
     }
 
     /** switches between off / Design 1 / Design 2 (the previous design is undone first) */

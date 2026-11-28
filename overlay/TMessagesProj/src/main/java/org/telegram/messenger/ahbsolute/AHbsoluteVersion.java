@@ -30,7 +30,7 @@ import org.telegram.ui.ActionBar.Theme;
  */
 public class AHbsoluteVersion {
 
-    public static final String VERSION = "v1.02";
+    public static final String VERSION = "v1.03";
 
     /** the screen; {@code back} closes it */
     public static View build(Context c, final Runnable back) {

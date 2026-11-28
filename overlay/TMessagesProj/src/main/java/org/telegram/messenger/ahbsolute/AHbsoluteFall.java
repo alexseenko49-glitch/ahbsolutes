@@ -36,6 +36,7 @@ public class AHbsoluteFall {
     /** called once for the message field */
     public static void attach(final EditText et) {
         if (et == null) return;
+        try { AHbsoluteCounter.attach(et); } catch (Throwable ignored) { }
         et.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {
                 try {

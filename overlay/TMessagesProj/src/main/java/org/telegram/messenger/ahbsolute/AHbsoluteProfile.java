@@ -307,8 +307,15 @@ public class AHbsoluteProfile {
             if (!wallpaperFor(userId, chatId)) return;
             Bitmap b = bitmapFor(view.getContext(), userId, chatId);
             if (b == null) return;
-            drawCover(canvas, b, view.getWidth(), view.getHeight());
+            drawWall(canvas, b, view.getWidth(), view.getHeight());
+            AHbsoluteAurora.tick(view);
         } catch (Throwable ignored) { }
+    }
+
+    /** wallpaper drawing used by every screen: living (Aurora) or still */
+    public static void drawWall(Canvas canvas, Bitmap b, int w, int h) {
+        if (AHbsoluteAurora.living()) AHbsoluteAurora.drawLiving(canvas, b, w, h);
+        else drawCover(canvas, b, w, h);
     }
 
     /** width-fit from the top (matches the banner with position "top"), otherwise centre crop */
@@ -350,5 +357,6 @@ public class AHbsoluteProfile {
         strokePaint.setStrokeWidth(Math.max(1f, AndroidUtilities.density));
         strokePaint.setColor(dark ? 0x26FFFFFF : 0x59FFFFFF);
         canvas.drawPath(path, strokePaint);
+        if (AHbsoluteAurora.on()) AHbsoluteAurora.drawEdge(canvas, rect, topRadius, bottomRadius, alpha, false);
     }
 }

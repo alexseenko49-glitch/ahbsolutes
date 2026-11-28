@@ -57,7 +57,12 @@ public class AHbsoluteGlass {
             canvas.drawPath(path, shine);
             // light rim
             rim.setStrokeWidth(Math.max(1f, AndroidUtilities.density * 1.1f));
-            rim.setShader(new LinearGradient(0, top, 0, top + h, new int[]{0x99FFFFFF, 0x33FFFFFF, 0x1AFFFFFF}, new float[]{0f, 0.4f, 1f}, Shader.TileMode.CLAMP));
+            if (out && AHbsoluteAurora.on()) {
+                // Aurora: your own messages get the flowing teal → indigo rim
+                rim.setShader(new LinearGradient(b.left, top, b.right, top + h, new int[]{0xCC5EEAD4, 0xAA22D3EE, 0xCCA5B4FC}, null, Shader.TileMode.CLAMP));
+            } else {
+                rim.setShader(new LinearGradient(0, top, 0, top + h, new int[]{0x99FFFFFF, 0x33FFFFFF, 0x1AFFFFFF}, new float[]{0f, 0.4f, 1f}, Shader.TileMode.CLAMP));
+            }
             canvas.drawPath(path, rim);
             // soft darker lower edge (refraction)
             low.setStrokeWidth(Math.max(1f, AndroidUtilities.density * 2f));

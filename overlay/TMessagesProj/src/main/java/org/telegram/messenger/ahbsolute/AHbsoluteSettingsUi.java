@@ -266,7 +266,7 @@ public class AHbsoluteSettingsUi {
             canvas.drawRect(0, 0, w, h, bg);
             if (wall) {
                 Bitmap b = AHbsoluteProfile.bitmap(c);
-                if (b != null) AHbsoluteProfile.drawCover(canvas, b, w, h);
+                if (b != null) AHbsoluteProfile.drawWall(canvas, b, w, h);
             }
             // header
             int headColor;
@@ -339,7 +339,8 @@ public class AHbsoluteSettingsUi {
                 canvas.drawColor(color(Theme.key_windowBackgroundGray));
                 if (AHbsoluteDesign.isOn(getContext())) {
                     Bitmap b = AHbsoluteProfile.bitmap(getContext());
-                    if (b != null) AHbsoluteProfile.drawCover(canvas, b, getWidth(), getHeight());
+                    if (b != null) AHbsoluteProfile.drawWall(canvas, b, getWidth(), getHeight());
+                    AHbsoluteAurora.tick(this);
                 }
             }
         };
@@ -354,6 +355,10 @@ public class AHbsoluteSettingsUi {
         try { Theme.createCommonResources(c); } catch (Throwable ignored) { }
         list.glass = AHbsoluteDesign.isOn(c);
         if (list.getParent() instanceof View && ((View) list.getParent()).getParent() instanceof View) ((View) ((View) list.getParent()).getParent()).invalidate();
+        list.gap(12);
+
+        // ---------- search ----------
+        list.addCard(searchField(c, list), -2);
         list.gap(12);
 
         // ---------- preview ----------
@@ -384,6 +389,7 @@ public class AHbsoluteSettingsUi {
         });
         list.addCard(design, -2);
         list.addCard(design2, -2);
+        uiCheck(c, list, t("Живые обои (Aurora)", "Living wallpaper (Aurora)"), "livewall", true);
         check(c, list, t("Встряхнуть — сменить дизайн", "Shake to switch design"), AHbsoluteShake.enabled(), false,
                 () -> AHbsoluteShake.setEnabled(c, !AHbsoluteShake.enabled()));
         info(c, list, AHbsoluteDesign.subtitle() + "\n\n" + AHbsoluteDesign.subtitle2() + "\n\n"
@@ -482,6 +488,7 @@ public class AHbsoluteSettingsUi {
             choice(c, list, t("Плотность стекла", "Glass density"), "msgglass_op", pct(40, 52, 62, 72, 85), pctNames(null, 40, 52, 62, 72, 85), "62", true, host);
         }
         uiCheck(c, list, t("Падающие буквы при удалении", "Falling letters when erasing"), "textfall", true);
+        uiCheck(c, list, t("Счётчик символов в поле ввода", "Character counter in the input field"), "charcount", true);
         uiCheck(c, list, t("Экстремальное удаление", "Extreme delete"), "erase", false);
         info(c, list, t("Liquid Glass: сообщения становятся каплями стекла, сквозь них видны обои. Падающие буквы: стёртые буквы выпрыгивают из поля ввода, падают на сообщения или на чат и исчезают за 2 секунды.",
                 "Liquid Glass: messages become drops of glass with the wallpaper showing through. Falling letters: erased letters jump out of the input field, land on the messages or the chat and fade within 2 seconds."));
@@ -635,6 +642,15 @@ public class AHbsoluteSettingsUi {
         info(c, list, t("Тема заменяет светлую/тёмную тему Telegram. Автосмена ночной темы отключается.",
                 "The theme replaces Telegram's light/dark theme. Automatic night mode is turned off."));
 
+        // ---------- privacy ----------
+        header(c, list, t("Приватность", "Privacy"));
+        uiCheck(c, list, t("Скрыть текст сообщений в списке чатов", "Hide message text in the chat list"), "hidetext", true);
+        uiCheck(c, list, t("Защита от скриншотов", "Screenshot protection"), "secure", true);
+        check(c, list, t("Ярлыки на иконке приложения", "Shortcuts on the app icon"), AHbsoluteUi.getBool("shortcuts"), false,
+                () -> { AHbsoluteUi.toggle(c, "shortcuts"); AHbsoluteShortcuts.update(c); });
+        info(c, list, t("Скрытый текст: в списке чатов вместо последнего сообщения — «🔒 скрыто», имена и время видны (удобно в метро и на созвонах). Защита от скриншотов: AHbsolute нельзя сфотографировать или записать с экрана, на «Недавних» он размыт — включается при следующем открытии экрана. Ярлыки: зажмите иконку AHbsolute — «Настройки AHbsolute», «Сменить дизайн», «Скопировать настройки».",
+                "Hidden text: the chat list shows \"🔒 hidden\" instead of the last message, names and times stay (handy in public). Screenshot protection: AHbsolute cannot be screenshotted or screen-recorded and is blurred in Recents — applies when a screen opens next. Shortcuts: long press the AHbsolute icon — settings, switch design, copy settings."));
+
         // ---------- visible to AHbsolute users ----------
         header(c, list, t("Видно пользователям AHbsolute", "Visible to AHbsolute users"));
         check(c, list, t("Показывать мой профиль пользователям AHbsolute", "Show my profile to AHbsolute users"), AHbsoluteShare.enabled(), AHbsoluteShare.enabled(),
@@ -746,6 +762,104 @@ public class AHbsoluteSettingsUi {
                 "AHbsolute is an unofficial client. It uses the Telegram API but is not made or endorsed by Telegram."));
         about.setTextGravity(Gravity.CENTER_HORIZONTAL);
         list.addPlain(about);
+        filter(list);
+    }
+
+    /* ------------------------------------------------------------ search in the settings ------------------------------------------------------------ */
+
+    private static String query = "";
+    private static java.lang.ref.WeakReference<View> searchView;
+
+    private static View searchField(final Context c, final AHbsoluteCardList list) {
+        LinearLayout box = new LinearLayout(c);
+        box.setOrientation(LinearLayout.HORIZONTAL);
+        box.setGravity(Gravity.CENTER_VERTICAL);
+        box.setPadding(dp(16), 0, dp(12), 0);
+        TextView icon = new TextView(c);
+        icon.setText("🔍");
+        icon.setTextSize(16);
+        box.addView(icon);
+        final android.widget.EditText et = new android.widget.EditText(c);
+        et.setBackground(null);
+        et.setSingleLine(true);
+        et.setTextSize(16);
+        et.setHint(t("Поиск по настройкам AHbsolute", "Search AHbsolute settings"));
+        et.setTextColor(color(Theme.key_windowBackgroundWhiteBlackText));
+        et.setHintTextColor(color(Theme.key_windowBackgroundWhiteGrayText));
+        et.setText(query);
+        et.setPadding(dp(10), dp(14), dp(4), dp(14));
+        et.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int d) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int d) { }
+            @Override public void afterTextChanged(android.text.Editable s) { query = s.toString(); filter(list); }
+        });
+        box.addView(et, new LinearLayout.LayoutParams(0, -2, 1f));
+        searchView = new java.lang.ref.WeakReference<>(box);
+        return box;
+    }
+
+    private static String textOf(View v) {
+        StringBuilder sb = new StringBuilder();
+        collect(v, sb, 0);
+        return sb.toString().toLowerCase();
+    }
+
+    private static void collect(View v, StringBuilder sb, int depth) {
+        if (v == null || depth > 6) return;
+        if (v instanceof TextView) { sb.append(((TextView) v).getText()).append(' '); }
+        else {
+            try {
+                java.lang.reflect.Method m = v.getClass().getMethod("getText");
+                Object o = m.invoke(v);
+                if (o instanceof CharSequence) sb.append((CharSequence) o).append(' ');
+            } catch (Throwable ignored) { }
+        }
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) collect(g.getChildAt(i), sb, depth + 1);
+        }
+    }
+
+    /** shows only the sections / rows that match the search; a matching section title shows the whole section */
+    private static void filter(AHbsoluteCardList list) {
+        String q = query == null ? "" : query.trim().toLowerCase();
+        View search = searchView == null ? null : searchView.get();
+        int n = list.getChildCount();
+        if (q.isEmpty()) {
+            for (int i = 0; i < n; i++) list.getChildAt(i).setVisibility(View.VISIBLE);
+            list.invalidate();
+            return;
+        }
+        java.util.HashMap<View, Boolean> hits = new java.util.HashMap<>();
+        int i = 0;
+        // everything before the first section title (preview, designs) is hidden while searching, except the field
+        while (i < n && !(list.getChildAt(i) instanceof HeaderCell)) {
+            View v = list.getChildAt(i);
+            v.setVisibility(v == search || (search != null && v == search.getParent()) ? View.VISIBLE : View.GONE);
+            i++;
+        }
+        while (i < n) {
+            int start = i, end = i + 1;
+            while (end < n && !(list.getChildAt(end) instanceof HeaderCell)) end++;
+            boolean headerHit = textOf(list.getChildAt(start)).contains(q);
+            boolean any = headerHit;
+            for (int k = start + 1; k < end; k++) {
+                View v = list.getChildAt(k);
+                boolean plain = v instanceof TextInfoPrivacyCell || !(v instanceof android.view.ViewGroup) && !(v instanceof TextView);
+                boolean hit = headerHit || (!plain && textOf(v).contains(q));
+                hits.put(v, hit);
+                if (hit) any = true;
+            }
+            list.getChildAt(start).setVisibility(any ? View.VISIBLE : View.GONE);
+            for (int k = start + 1; k < end; k++) {
+                View v = list.getChildAt(k);
+                boolean plain = v instanceof TextInfoPrivacyCell || !(v instanceof android.view.ViewGroup) && !(v instanceof TextView);
+                Object hit = hits.get(v);
+                v.setVisibility(any && (plain ? headerHit || v instanceof TextInfoPrivacyCell : Boolean.TRUE.equals(hit)) ? View.VISIBLE : View.GONE);
+            }
+            i = end;
+        }
+        list.invalidate();
     }
 
     private static void themeResult(Context c, String err, Host host) {

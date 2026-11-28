@@ -45,6 +45,7 @@ public class AHbsoluteUi {
     private static boolean inited;
     private static final Handler H = new Handler(Looper.getMainLooper());
     private static final WeakHashMap<Activity, Boolean> installed = new WeakHashMap<>();
+    private static final WeakHashMap<Activity, Boolean> secured = new WeakHashMap<>();
 
     private static SharedPreferences sp(Context c) { return c.getApplicationContext().getSharedPreferences("ahb_ui", Context.MODE_PRIVATE); }
     private static SharedPreferences dg(Context c) { return c.getApplicationContext().getSharedPreferences("ahb_diag", Context.MODE_PRIVATE); }
@@ -54,7 +55,8 @@ public class AHbsoluteUi {
     public static boolean shake(Context c) { return master(c) && sp(c).getBoolean("shake", true); }
     public static boolean topbar(Context c) { return master(c) && sp(c).getBoolean("topbar", false); }
     private static boolean raw(Context c, String k) {
-        boolean def = !(k.equals("topbar") || k.equals("msgglass") || k.equals("chatcards") || k.equals("mainwall"));
+        boolean def = !(k.equals("topbar") || k.equals("msgglass") || k.equals("chatcards") || k.equals("mainwall")
+                || k.equals("hidetext") || k.equals("secure") || k.equals("livewall"));
         return sp(c).getBoolean(k, def);
     }
 
@@ -168,6 +170,13 @@ public class AHbsoluteUi {
 
     private static void onResumed(final Activity a) {
         installed.put(a, true);
+        // screenshot / screen-recording protection for the whole app (switch: AHbsolute → Приватность)
+        try {
+            boolean sec = getBool("secure");
+            if (sec) a.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+            else if (secured.containsKey(a)) a.getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+            if (sec) secured.put(a, Boolean.TRUE); else secured.remove(a);
+        } catch (Throwable ignored) { }
         try { installTouch(a); } catch (Throwable e) { diag("d_touch", "error: " + e); }
         final Context c = a.getApplicationContext();
         // Telegram builds its tab bar / glass state a bit after onResume, so the pass is repeated a few times

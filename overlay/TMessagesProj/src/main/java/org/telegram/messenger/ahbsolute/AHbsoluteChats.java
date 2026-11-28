@@ -49,6 +49,61 @@ public class AHbsoluteChats extends RecyclerView.ItemDecoration {
         try { return AHbsoluteUi.ctx() == null || AHbsoluteUi.master(AHbsoluteUi.ctx()); } catch (Throwable e) { return true; }
     }
 
+    private static boolean unread(DialogCell cell) {
+        try {
+            org.telegram.tgnet.TLRPC.Dialog d = org.telegram.messenger.MessagesController.getInstance(org.telegram.messenger.UserConfig.selectedAccount).dialogs_dict.get(cell.getDialogId());
+            return d != null && (d.unread_count > 0 || d.unread_mark);
+        } catch (Throwable e) { return false; }
+    }
+
+    /* ---- Aurora entrance: chats float in one after another when the list appears ---- */
+    private static final java.util.WeakHashMap<View, Boolean> shown = new java.util.WeakHashMap<>();
+    private final java.util.WeakHashMap<RecyclerView, Long> listStart = new java.util.WeakHashMap<>();
+
+    private void entrance(View v, RecyclerView parent) {
+        if (shown.containsKey(v)) return;
+        shown.put(v, Boolean.TRUE);
+        if (!AHbsoluteAurora.on()) return;
+        long now = android.os.SystemClock.uptimeMillis();
+        Long st = listStart.get(parent);
+        if (st == null || now - st > 5000) { st = now; listStart.put(parent, st); }
+        if (now - st > 900) return; // only while the list is appearing, not while scrolling later
+        int idx = Math.max(0, parent.indexOfChild(v));
+        v.setAlpha(0f);
+        v.setTranslationY(AndroidUtilities.dp(22));
+        v.animate().alpha(1f).translationY(0f).setStartDelay(Math.min(12, idx) * 38L).setDuration(360)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator(2f)).start();
+    }
+
+    /* ---- privacy: hide the message text of the chat list ---- */
+    public static boolean hideText() { return AHbsoluteUi.getBool("hidetext"); }
+    private final Paint cover = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint coverText = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    @Override
+    public void onDrawOver(@NonNull Canvas canvas, @NonNull RecyclerView parent, @NonNull RecyclerView.State state) {
+        try {
+            if (!on() || !hideText()) return;
+            boolean ltr = !org.telegram.messenger.LocaleController.isRTL;
+            int base = Theme.getColor(Theme.key_windowBackgroundWhite);
+            coverText.setTextSize(AndroidUtilities.dp(13));
+            coverText.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
+            for (int i = 0; i < parent.getChildCount(); i++) {
+                View v = parent.getChildAt(i);
+                if (!(v instanceof DialogCell) || v.getVisibility() != View.VISIBLE) continue;
+                float l = v.getLeft() + v.getTranslationX(), t = v.getTop() + v.getTranslationY();
+                float w = v.getWidth(), h = v.getHeight();
+                float x0 = ltr ? l + AndroidUtilities.dp(76) : l + AndroidUtilities.dp(12);
+                float x1 = ltr ? l + w - AndroidUtilities.dp(44) : l + w - AndroidUtilities.dp(76);
+                rect.set(x0, t + h * 0.50f, x1, t + h - AndroidUtilities.dp(9));
+                cover.setColor(base);
+                cover.setAlpha(Math.round(245 * v.getAlpha()));
+                canvas.drawRoundRect(rect, AndroidUtilities.dp(8), AndroidUtilities.dp(8), cover);
+                canvas.drawText("🔒 " + AHbsolute.t("скрыто", "hidden"), rect.left + AndroidUtilities.dp(8), rect.centerY() + AndroidUtilities.dp(4.5f), coverText);
+            }
+        } catch (Throwable ignored) { }
+    }
+
     /** called from the RecyclerListView constructors (through AHbsoluteBlur.attach) */
     public static void attach(RecyclerView rv) {
         try { if (rv != null) rv.addItemDecoration(new AHbsoluteChats()); } catch (Throwable ignored) { }
@@ -70,6 +125,7 @@ public class AHbsoluteChats extends RecyclerView.ItemDecoration {
             DialogCell cell = (DialogCell) view;
             if (cards) cell.useSeparator = false;
             clip(view, cards);
+            entrance(view, parent);
         } catch (Throwable ignored) { }
     }
 
@@ -107,13 +163,15 @@ public class AHbsoluteChats extends RecyclerView.ItemDecoration {
                 parent.getLocationOnScreen(tmpLoc);
                 wallRect[0] = tmpLoc[0]; wallRect[1] = tmpLoc[1]; wallRect[2] = parent.getWidth(); wallRect[3] = parent.getHeight();
                 wallKnown = true;
-                AHbsoluteProfile.drawCover(canvas, b, parent.getWidth(), parent.getHeight());
+                AHbsoluteProfile.drawWall(canvas, b, parent.getWidth(), parent.getHeight());
+                AHbsoluteAurora.tick(parent);
             } else if (cards) {
                 canvas.drawColor(Theme.getColor(Theme.key_windowBackgroundGray));
             }
             if (!cards) return;
             int color = Theme.getColor(Theme.key_windowBackgroundWhite);
             float r = AndroidUtilities.dp(radius());
+            boolean aurora = AHbsoluteAurora.on();
             for (int i = 0; i < parent.getChildCount(); i++) {
                 View v = parent.getChildAt(i);
                 if (!(v instanceof DialogCell) || v.getVisibility() != View.VISIBLE) continue;
@@ -124,8 +182,12 @@ public class AHbsoluteChats extends RecyclerView.ItemDecoration {
                     paint.setColor(color);
                     paint.setAlpha(Math.round(255 * v.getAlpha()));
                     canvas.drawRoundRect(rect, r, r, paint);
+                    if (aurora) AHbsoluteAurora.drawEdge(canvas, rect, r, r, v.getAlpha(), false);
                 }
+                // Aurora: unread chats glow
+                if (aurora && unread((DialogCell) v)) AHbsoluteAurora.drawEdge(canvas, rect, r, r, v.getAlpha(), true);
             }
+            if (aurora) AHbsoluteAurora.tick(parent);
         } catch (Throwable ignored) { }
     }
 
@@ -161,7 +223,7 @@ public class AHbsoluteChats extends RecyclerView.ItemDecoration {
         int lw = wallKnown ? wallRect[2] : host.getWidth(), lh = wallKnown ? wallRect[3] : host.getHeight();
         canvas.save();
         canvas.translate(lx - hostLoc[0], ly - hostLoc[1]);
-        AHbsoluteProfile.drawCover(canvas, b, lw, lh);
+        AHbsoluteProfile.drawWall(canvas, b, lw, lh);
         canvas.restore();
     }
 
@@ -179,6 +241,7 @@ public class AHbsoluteChats extends RecyclerView.ItemDecoration {
             if (bottom <= 0) return true;
             int save = canvas.saveLayer(0, 0, fade.getWidth(), bottom, null);
             drawWallAligned(canvas, fade, b);
+            AHbsoluteAurora.tick(fade);
             if (fadeHeight > 0) {
                 if (fadeMaskStart != fadeStart || fadeMaskH != fadeHeight) {
                     fadeMask.setShader(new LinearGradient(0, fadeStart, 0, bottom, 0xFF000000, 0x00000000, Shader.TileMode.CLAMP));
@@ -218,6 +281,11 @@ public class AHbsoluteChats extends RecyclerView.ItemDecoration {
             float alpha = actionBar.getAlpha();
             if (mainWallpaper() && AHbsoluteProfile.bitmap(host.getContext()) != null) {
                 AHbsoluteProfile.drawGlassSection(canvas, pillRect, r, r, alpha, base);
+            } else if (AHbsoluteAurora.on()) {
+                pill.setColor(base);
+                pill.setAlpha(Math.round(255 * alpha));
+                canvas.drawRoundRect(pillRect, r, r, pill);
+                AHbsoluteAurora.drawEdge(canvas, pillRect, r, r, alpha, false);
             } else {
                 pill.setColor(base);
                 pill.setAlpha(Math.round(255 * alpha));

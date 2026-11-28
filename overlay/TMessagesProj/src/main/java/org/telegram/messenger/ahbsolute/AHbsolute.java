@@ -190,6 +190,7 @@ public class AHbsolute {
     public static void onAppStart(Context ctx) {
         try { AHbsoluteStreaks.init(ctx); } catch (Throwable ignored) { }
         try { AHbsoluteUi.init(ctx); } catch (Throwable ignored) { }
+        try { AHbsoluteShortcuts.update(ctx); } catch (Throwable ignored) { }
         try {
             if (!isCleanEnabled()) return;
             final File dir = ctx.getCacheDir();

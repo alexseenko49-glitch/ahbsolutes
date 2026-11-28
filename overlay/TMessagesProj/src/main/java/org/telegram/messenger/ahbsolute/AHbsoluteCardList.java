@@ -82,10 +82,12 @@ public class AHbsoluteCardList extends LinearLayout {
             } else {
                 paint.setColor(color);
                 canvas.drawRoundRect(g, r, r, paint);
+                if (AHbsoluteAurora.on()) AHbsoluteAurora.drawEdge(canvas, g, r, r, 1f, false);
             }
             i = j + 1;
         }
         super.dispatchDraw(canvas);
+        if (AHbsoluteAurora.on()) postInvalidateDelayed(60);
     }
 
     @Override

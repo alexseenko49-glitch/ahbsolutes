@@ -37,6 +37,7 @@ public class AHbsoluteStandaloneActivity extends Activity implements AHbsoluteSe
         super.onCreate(b);
         try { AHbsoluteUi.init(this); } catch (Throwable ignored) { }
         try { Theme.createCommonResources(this); } catch (Throwable ignored) { }
+        if (handleShortcut(getIntent())) { finish(); return; }
 
         int barColor = safeColor(Theme.key_actionBarDefault, 0xFF527DA3);
         int barText = safeColor(Theme.key_actionBarDefaultTitle, 0xFFFFFFFF);
@@ -88,6 +89,25 @@ public class AHbsoluteStandaloneActivity extends Activity implements AHbsoluteSe
         } catch (Throwable ignored) { }
 
         rebuild();
+    }
+
+    /** app icon quick actions: «Сменить дизайн» and «Скопировать настройки» work without opening the screen */
+    private boolean handleShortcut(Intent i) {
+        String a = i == null ? null : i.getStringExtra(AHbsoluteShortcuts.EXTRA);
+        if ("design".equals(a)) {
+            int next = (AHbsoluteDesign.variant(this) + 1) % 3;
+            String err = AHbsoluteDesign.setVariant(this, next);
+            Toast.makeText(this, err != null ? err : next == 0 ? AHbsolute.t("Обычный вид", "Regular look") : next == 1 ? "Absolute Design 1 ✨" : "Absolute Design 2 ✨", Toast.LENGTH_SHORT).show();
+            return true;
+        }
+        if ("copy".equals(a)) {
+            try {
+                AHbsoluteSettingsCode.copy(this);
+                Toast.makeText(this, AHbsolute.t("Код настроек скопирован", "Settings code copied"), Toast.LENGTH_SHORT).show();
+            } catch (Throwable e) { Toast.makeText(this, String.valueOf(e), Toast.LENGTH_LONG).show(); }
+            return true;
+        }
+        return false;
     }
 
     private static int safeColor(int key, int def) {
